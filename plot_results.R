@@ -32,7 +32,6 @@ plot_results <- function(estimate = 'd', fn_basedir, v_data, motion_method_t = "
 library(dplyr) # TODO: don't think we need to re-import here etc
 library(ggplot2)
 library(ggrepel)
-# library(ggridges)
 library(lme4)
 library(pwr) # for sample size calculations
 library(tidyr)
@@ -72,6 +71,8 @@ v_data$meta_category$study$category <- v_data$meta_category$study$group_level
 v_data$meta_category$study$dataset <- vector("list", length(v_data$meta_category$study$name))
 v_data$meta_category$study$each_n <- vector("list", length(v_data$meta_category$study$name))
 v_data$meta_category$study$n <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
+v_data$meta_category$study$n1 <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
+v_data$meta_category$study$n2 <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
 v_data$meta_category$study$included_study_names <- vector("list", length(v_data$meta_category$study$name))
 v_data$meta_category$study$n_studies <- integer(length(v_data$meta_category$study$name))
 
@@ -94,7 +95,7 @@ for (i in seq_along(v_data$meta_category$study$name)) {
   v_data$meta_category$study$n_studies[[i]] <- length(included_study_names)
   
   v_data$meta_category$study$n <- vector("list", length(v_data$meta_category$study$name))
-  for (i in seq_along(v_data$meta_category$study$name)) {
+  # for (i in seq_along(v_data$meta_category$study$name)) {
     meta_datasets <- v_data$meta_category$study$dataset[[i]]
     unique_datasets <- unique(meta_datasets)
     unique_n <- 0
@@ -125,10 +126,10 @@ for (i in seq_along(v_data$meta_category$study$name)) {
     } else {
       # If multiple stat types, use the most common one or a combination label
       stat_type_counts <- table(stat_types_in_meta)
-      v_data$meta_category$study$orig_stat_type[[i]] <- names(stat_type_counts)[which.max(stat_type_counts)]
+      v_data$meta_category$study$orig_stat_type[[i]] <- names(which.max(stat_type_counts))
     }
     
-  }
+  # }
 }
 names(v_data$meta_category$study$dataset) <- v_data$meta_category$study$name
 names(v_data$meta_category$study$each_n) <- v_data$meta_category$study$name
@@ -166,29 +167,33 @@ plot_extra <- FALSE # TODO - tmp
 
 # get point est and conservative est
 res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Point Estimates", paste0(fn_basedir,'point'))
-
-if (plot_extra) {
-  res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'))
-    
-  # repeat, but for large N studies
-  res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'))
-}
-
 # get multivariate effect sizes
 res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Multivariate Effect Sizes", paste0(fn_basedir,'mv_est'), plot_type = "mv")
 
 # Make density plots
 sigmas_master <- plot_densities(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, save_plots)
 
-# Normal setup
+# Req'd n plots:
+# - original
 required_n_df <- make_required_n_df(n_pts, sigmas_master, do_mv = FALSE)
 plot_required_n_panel(required_n_df, do_mv = FALSE, cat_colors,fn_basedir)
 
-# Multivariate setup
+# - multivariate
 required_n_df_mv <- make_required_n_df(n_pts, sigmas_master, res_mv = res_mv, do_mv = TRUE)
 plot_required_n_panel(required_n_df_mv, do_mv = TRUE, cat_colors,fn_basedir)
 
+
+
+if (plot_extra) {
+  # conservative and large n
+  res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'))
+  res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'))
+}
+
+
 } # function
+
+
 
 
 
@@ -229,6 +234,11 @@ r_sq_se <- function(r_sq, n) {
   se <- se_r^2
   return(se)
 }
+
+
+
+# ------------- ORGANIZING, FITTING, AND PLOTTING -------------------------
+
 
 ########### Summarize studies ########### 
 
@@ -322,40 +332,50 @@ get_study_summaries <- function(data, study, estimate, combo_name) {
     d_mv_lb[i] <- data[[i]][[mv_combo_name]]$sim_ci_lb
     d_mv_ub[i] <- data[[i]][[mv_combo_name]]$sim_ci_ub
     
-    # 4. Get sample size and variances for meta
+    # 4. Get sample size and variances for meta-regression
     
-    if (!is.null(data[[i]][[combo_name]]$n)) {
+    if (study$orig_stat_type[[i]] == "t2") {
+      if (!is.null(data[[i]][[combo_name]]$n1)) {
+        d_n[i] <- data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2
+        # get var for meta
+        if (estimate == "d") {
+          vi[i] <- d_se(d_sd, data[[i]][[combo_name]]$n1, data[[i]][[combo_name]]$n2)^2
+          vi_char_mag[i] <- d_se(d_characteristic_mag[i], data[[i]][[combo_name]]$n1, data[[i]][[combo_name]]$n2)^2
+          vi_mv[i] <- d_se(d_mv[i], data[[i]][[combo_name]]$n1, data[[i]][[combo_name]]$n2)^2
+        } else if (estimate == "r_sq") {
+          vi[i] <- r_sq_se(d_sd, data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2)^2
+          vi_char_mag[i] <- r_sq_se(d_characteristic_mag[i], data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2)^2
+          vi_mv[i] <- r_sq_se(d_mv[i], data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2)^2
+        }
+      } else {
+        # TODO: for the meta-analytic results, we should really just get the results from the confidence intervals,
+        # since these come directly from the meta-analysis. For now, we don't use the variances previously calculated
+        # from the meta-analysis for the meta-regression below, so we will ignore
+        # (add helper alongside other se estimators below)
+        d_n[i] <- data[[i]][[combo_name]]$n
+        vi[i] <- NA
+        vi_char_mag[i] <- NA
+        vi_mv[i] <- NA
+      }
+    } else if (study$orig_stat_type[[i]] == "t" || study$orig_stat_type[[i]] == "r") {
+    # if (!is.null(data[[i]][[combo_name]]$n)) {
       d_n[i] <- data[[i]][[combo_name]]$n
       
-      # get var for meta
       if (estimate == "d") {
         if (study$orig_stat_type[[i]] == "r") { # treat as 2-sample t-test
-          vi <- d_se(d_sd, d_n[i]/2, d_n[i]/2)^2
-          vi_char_mag <- d_se(d_characteristic_mag[i], d_n[i]/2, d_n[i]/2)^2
-          vi_mv <- d_se(d_mv[i], d_n[i]/2, d_n[i]/2)^2
+          vi[i] <- d_se(d_sd, d_n[i]/2, d_n[i]/2)^2
+          vi_char_mag[i] <- d_se(d_characteristic_mag[i], d_n[i]/2, d_n[i]/2)^2
+          vi_mv[i] <- d_se(d_mv[i], d_n[i]/2, d_n[i]/2)^2
         } else { # normal 1-sample t-test
-          vi <- d_se(d_sd, d_n[i])^2
-          vi_char_mag <- d_se(d_characteristic_mag[i], d_n[i])^2
-          vi_mv <- d_se(d_mv[i], d_n[i])^2
+          vi[i] <- d_se(d_sd, d_n[i])^2
+          vi_char_mag[i] <- d_se(d_characteristic_mag[i], d_n[i])^2
+          vi_mv[i] <- d_se(d_mv[i], d_n[i])^2
         }
       } else if (estimate == "r_sq") {
-        vi <- r_sq_se(d_sd, d_n[i])
-        vi_char_mag <- r_sq_se(d_characteristic_mag[i], d_n[i])
-        vi_mv <- r_sq_se(d_mv[i], d_n[i])
+        vi[i] <- r_sq_se(d_sd, d_n[i])^2
+        vi_char_mag[i] <- r_sq_se(d_characteristic_mag[i], d_n[i])^2
+        vi_mv[i] <- r_sq_se(d_mv[i], d_n[i])^2
       }
-    } else if (!is.null(data[[i]][[combo_name]]$n1) && !is.null(data[[i]][[combo_name]]$n2)) {
-      d_n[i] <- data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2
-      # get var for meta
-      if (estimate == "d") {
-        vi <- d_se(d_sd, data[[i]][[combo_name]]$n1, data[[i]][[combo_name]]$n2)^2
-        vi_char_mag <- d_se(d_characteristic_mag[i], data[[i]][[combo_name]]$n1, data[[i]][[combo_name]]$n2)^2
-        vi_mv <- d_se(d_mv[i], data[[i]][[combo_name]]$n1, data[[i]][[combo_name]]$n2)^2
-      } else if (estimate == "r_sq") {
-        vi <- r_sq_se(d_sd, data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2)
-        vi_char_mag <- r_sq_se(d_characteristic_mag[i], data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2)
-        vi_mv <- r_sq_se(d_mv[i], data[[i]][[combo_name]]$n1 + data[[i]][[combo_name]]$n2)
-      }
-      
     } else {
       d_n[i] <- NA
     }
@@ -584,18 +604,19 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "sd"
         res <- do.call(rbind, res)
         
         
-      } else { # meta-analysis TODO
+      } else { # nesting within category, dataset x category
         
         # fit meta-analysis nesting studies by dataset and overarching category
         
         # setup grouping variables
         df$dataset_nested <- interaction(df$overarching_category, df$dataset, drop = TRUE)
-        df$study_nested <- interaction(df$overarching_category, df$dataset, df$name, drop = TRUE)
+        # df$study_nested <- interaction(df$overarching_category, df$dataset, df$name, drop = TRUE)
         
         if (plot_type == "mv") {
           fit_all <- rma.mv(yi = mv, 
                             V = vi_mv,  # approximate variance from CI
-                            random = ~ 1 | overarching_category/dataset_nested/study_nested,
+                            random = ~ 1 | overarching_category/dataset_nested,
+                            # random = ~ 1 | overarching_category/dataset_nested/study_nested,
                             data = df,
                             method = "REML")
         } else {
@@ -603,14 +624,14 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "sd"
             fit_all <- rma.mv(yi = char_mag, 
                               V = vi_char_mag,  # approximate variance
                               mods = ~ I(1/sqrt(n)),
-                              random = ~ 1 | overarching_category/dataset_nested/study_nested,
+                              random = ~ 1 | overarching_category/dataset_nested,
                               data = df,
                               method = "REML")
           } else {
             fit_all <- rma.mv(yi = sd, 
                               V = vi_sd,  # approximate variance
                               mods = ~ I(1/sqrt(n)),
-                              random = ~ 1 | overarching_category/dataset_nested/study_nested,
+                              random = ~ 1 | overarching_category/dataset_nested,
                               data = df,
                               method = "REML")
           }
@@ -1013,7 +1034,7 @@ make_required_n_df <- function(n_pts, sigmas_master, res_mv = NULL, do_mv = FALS
     if (do_mv) {
       y <- rep(0, length(d))
       if (!is.null(res_mv) && cat %in% rownames(res_mv)) {
-        closest_idx <- which.min(abs(d - res_mv[cat, "est"]))
+        closest_idx <- which.min(abs(d - res_mv[cat, "est"])) # TODO: this should use sigmas_master for mv instead; but then again, we should be able to just use res instead of sigmas throughout
         y[closest_idx] <- 1
       }
       
@@ -1028,18 +1049,6 @@ make_required_n_df <- function(n_pts, sigmas_master, res_mv = NULL, do_mv = FALS
       
       n_detect <- sapply(d, function(dd) safe_pwr(dd, test_type))
       bin_indices <- cut(n_detect, breaks = n_bins, include.lowest = TRUE, labels = bin_labels)
-      
-      # Calculate both one-sample and two-sample n using safe wrapper
-      # n_detect_one <- sapply(d, function(dd) safe_pwr(dd, "one.sample"))
-      # n_detect_two <- sapply(d, function(dd) safe_pwr(dd, "two.sample"))
-      
-      # Use n_detect_one for 'task (within-sub)', else n_detect_two
-      # if cat contains task
-      # if (grepl("task", cat)) {
-      #   bin_indices <- cut(n_detect_one, breaks = n_bins, include.lowest = TRUE, labels = bin_labels)
-      # } else {
-      #   bin_indices <- cut(n_detect_two, breaks = n_bins, include.lowest = TRUE, labels = bin_labels)
-      # }
     }
     
     binned_sums <- tapply(y, bin_indices, sum, na.rm = TRUE)
