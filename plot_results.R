@@ -162,11 +162,12 @@ total_n <- sum(all_ns, na.rm = TRUE)
 
 ## Plot
   
-plot_non_mv <- TRUE # TODO - tmp
+plot_extra <- FALSE # TODO - tmp
 
-if (plot_non_mv) {
-  # get point est and conservative est
-  res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Point Estimates", paste0(fn_basedir,'point'))
+# get point est and conservative est
+res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Point Estimates", paste0(fn_basedir,'point'))
+
+if (plot_extra) {
   res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'))
     
   # repeat, but for large N studies
@@ -772,16 +773,20 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "sd"
 
 
 ###########  Make Estimated Density Plots ########### 
+
 plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, save_plots = TRUE) {
 
   print('Making density plots')
   # cats <- unique(rownames(res))
   # cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
   
+  # params
+  do_horizontal_panels <- TRUE
+  
   for (do_mv in c(FALSE, TRUE)) {
     if (do_mv) {
       mv_suffix <- '_mv'
-      xlim <- c(0, 6)
+      xlim <- c(0, 3.5)
     } else {
       mv_suffix <- ''
       xlim <- c(-0.8, 0.8)
@@ -861,14 +866,7 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
   
   
   density_df <- do.call(rbind, density_list)
-  
-  # Set x limits and y max for each category
-  if (do_mv) {
-    xlim <- c(-2.5, 2.5)
-  } else {
-    xlim <- c(-0.8, 0.8)
-  }
-  # density_df <- density_df[density_df$d >= xlim_min & density_df$d <= xlim_max, ]
+
   y_max <- max(density_df$density)
   
   # Overlapping densities colored by overarching category, legend inset
@@ -890,11 +888,39 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
     print(p_density)
   }
   
+  # Panel densities
+  
+  if (do_horizontal_panels) {
+    nrow <- 1
+    width = 4 * length(cats)
+    height = 4
+  } else {
+    nrow <- length(cats)
+    width = 5
+    height = 4 * length(cats)
+  }
+  density_df$fill <- density_df$sigma_type=="est"
+  
   # Separate panels per category, colored by overarching category, legend inset
-  p_density_panel <- ggplot(density_df, aes(x = d, y = density, color = overarching_category, linetype = sigma_type)) +
-    geom_line(size = 1) +
-    facet_wrap(~category, nrow = 1, scales = "free_y") +
-    scale_color_manual(values = cat_colors) +
+  p_density_panel <- ggplot() +
+    # ribbon only for "est" rows
+    geom_ribbon(
+      data = subset(density_df, sigma_type == "est"),
+      aes(x = d, ymin = 0, ymax = density, fill = overarching_category),
+      alpha = 0.35,
+      colour = NA,
+      inherit.aes = FALSE,
+      show.legend = FALSE   # hide separate fill legend if you prefer
+    ) +
+    # lines for all rows (color + linetype)
+    geom_line(
+      data = density_df,
+      aes(x = d, y = density, color = overarching_category, linetype = sigma_type),
+      size = 0.9
+    ) +
+    facet_wrap(~category, nrow = nrow, scales = "free_y") +
+    scale_color_manual(values = cat_colors, name = "Category") +
+    scale_fill_manual(values = cat_colors, guide = "none") +  # keep colors consistent, hide fill legend
     labs(title = "Density Curves by Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
     theme_bw() +
     coord_cartesian(xlim = xlim) +
@@ -904,8 +930,26 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
       legend.background = element_rect(fill = "white", color = "grey80"),
       legend.key.size = unit(0.7, "lines")
     )
+  
+  # p_density_panel <- ggplot(density_df, aes(x = d, y = density, color = overarching_category, fill = overarching_category, linetype = sigma_type)) +
+  #   geom_ribbon(aes(ymin = 0, ymax = density,
+  #                   alpha = ifelse(sigma_type == "est", 0.35, 0)),
+  #               colour = NA, inherit.aes = TRUE, show.legend = FALSE) +
+  #   geom_line(size = 1) +
+  #   facet_wrap(~category, nrow = nrow, scales = "free_y") +
+  #   scale_color_manual(values = cat_colors) + # remap line colors
+  #   scale_fill_manual(values = cat_colors) + # remap fill colors
+  #   labs(title = "Density Curves by Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
+  #   theme_bw() +
+  #   coord_cartesian(xlim = xlim) +
+  #   theme(
+  #     legend.position = c(0.02, 0.98),
+  #     legend.justification = c("left", "top"),
+  #     legend.background = element_rect(fill = "white", color = "grey80"),
+  #     legend.key.size = unit(0.7, "lines")
+  #   )
   if (save_plots) {
-    ggsave(paste0(fn_basedir, 'density__panels',mv_suffix,'.pdf'), p_density_panel, width = 12, height = 4)
+    ggsave(paste0(fn_basedir, 'density__panels',mv_suffix,'.pdf'), p_density_panel, width = width, height = height)
   } else {
     print(p_density_panel)
   }
@@ -1016,15 +1060,32 @@ make_required_n_df <- function(n_pts, sigmas_master, res_mv = NULL, do_mv = FALS
 
 # plot req'd n
 
-plot_required_n_panel <- function(df, do_mv = FALSE, cat_colors,fn_basedir) {
+plot_required_n_panel <- function(df, do_mv = FALSE, cat_colors, fn_basedir) {
+  
+  do_horizontal_panels <- TRUE
+  
   title <- if (do_mv) "Required n for 80% Power by Category (Multivariate)" else "Required n for 80% Power by Category"
   filename <- if (do_mv) 'sample_size__panels_mv.pdf' else 'sample_size__panels.pdf'
   # Add line segment from y=0 to y=y[1] at x=1 if y[1] != 0 for each category
   segment_df <- df %>% group_by(overarching_category) %>% filter(row_number() == 1 & cumulative_proportion[1] != 0)
+  
+  if (do_horizontal_panels) {
+    nrow <- 1
+    width = 4 * length(cat_colors)
+    height = 4
+  } else {
+    nrow <- length(cat_colors)
+    width = 5
+    height = 4 * length(cat_colors)
+  }
+  
   p <- ggplot(df, aes(x = bin, y = cumulative_proportion, group = overarching_category, color = overarching_category)) +
+    geom_ribbon(aes(ymin = 0, ymax = cumulative_proportion, fill = overarching_category),
+                alpha = 0.35, inherit.aes = TRUE, show.legend = FALSE) +
     geom_line(size = 1) +
     scale_color_manual(values = cat_colors) +
-    facet_wrap(~overarching_category, ncol = 1, scales = "free_y") +
+    scale_fill_manual(values = cat_colors) + # remap fill colors
+    facet_wrap(~overarching_category, nrow = nrow, scales = "free_y") +
     labs(title = title, x = "Minimum sample size bin", y = "Cumulative Proportion of Effects", color = "Category") +
     theme_bw() +
     theme(
@@ -1038,7 +1099,7 @@ plot_required_n_panel <- function(df, do_mv = FALSE, cat_colors,fn_basedir) {
     p <- p + geom_segment(data = segment_df, aes(x = 1, xend = 1, y = 0, yend = cumulative_proportion, color = overarching_category), inherit.aes = FALSE, size = 1)
   }
   if (save_plots) {
-    ggsave(paste0(fn_basedir, filename), p, width = 5, height = 15)
+    ggsave(paste0(fn_basedir, filename), p, width = width, height = height)
   } else {
     print(p)
   }
