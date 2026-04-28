@@ -9,7 +9,7 @@
 
 # paths
 project_dir <- "/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/"
-out_master_dir <- paste0(project_dir, "manuscript/figures/plots/sim/")
+out_master_dir <- paste0(project_dir, "manuscript/figures/plots/missed_effects/")
 crossbrain_effect_estimator_script <- paste0(project_dir, "scripts/crossbrain_effects/crossbrain_effect_estimator.R")
 effect_size_estimate_data <- paste0(project_dir, "manuscript/figures/plots/crossbrain_effects/pooling.none.motion.regression.mv.none/point_res.Rdata")
 
@@ -20,18 +20,37 @@ library(reshape2)
 library(pwr)
 source(crossbrain_effect_estimator_script)
 
+all_outcome_categories <- c("psychological", "physical", "task activation", "task connectivity")
+all_target_effect_type__from_basis <- c("same_sample","max", "mean_without_selection")
+
+for (outcome_category in all_outcome_categories) {
+for (target_effect_type__from_basis in all_target_effect_type__from_basis) {
+
 # parameters
 #   -for sim
 sim_params <- list (
-  outcome_category = "psychological", # c("psychological","physical", "task activation", "task connectivity")
+  outcome_category = outcome_category,
   n_subjects__gt = 10000, # ground truth full sample size
   n_regions = 500,
   sample_sizes = c(25, 50, 100, 500, 1000, 5000),
   n_reps = 100,
   alpha_fdr = 0.05,
   targeted_power = 0.8,
-  target_effect_type__from_basis = "mean_without_selection" # c("min", "median", "max", "mean_without_selection")
+  target_effect_type__from_basis = target_effect_type__from_basis
 )
+
+# overwrite setup
+ask_to_overwrite_if_exists <- FALSE
+default_overwrite <- FALSE
+
+# plotting setup
+cats <- c("psychological", "physical", "task activation", "task connectivity")
+cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
+cat_colors[c(1,2)] <- cat_colors[c(2,1)]
+names(cat_colors) <- cats
+cat_color <- cat_colors[sim_params$outcome_category]
+transparency_main <- 0.6
+transparency_overlay <- 0.5
 
 #   -cross-brain area and cross-subject distribution parameters (Cohen's)
 mu_crossbrain <- 0
@@ -88,6 +107,18 @@ simulate_data <- function(n_subjects, n_regions, mu_crossbrain, sd_crossbrain, s
   ))
 }
 
+simulate_data_ctrl <- function(n_subjects, n_regions, mu_crossbrain, sd_crossbrain, sd_crosssubject) {
+  ground_truth_true_effects <- replicate(0, n_regions) # all effects truly 0 so difference with treatment gives specified effect size
+  sim_data <- matrix(0, nrow = n_subjects, ncol = n_regions)
+  for (i in 1:n_subjects) {
+    subject_var <- rnorm(n_regions, mean = 0, sd = sd_crosssubject)
+    sim_data[i, ] <- as.vector(ground_truth_true_effects + subject_var)
+  }
+  return(list(
+    sim_data = sim_data
+  ))
+}
+
 # return detections and effect sizes
 get_pos_and_effects <- function(X, alpha = 0.05, use_correction = TRUE) {
   
@@ -119,7 +150,6 @@ get_pos_and_effects <- function(X, alpha = 0.05, use_correction = TRUE) {
 # if sim_data exists, see whether current params are the same as previous
 sim_data_exists <- FALSE
 if (file.exists(sim_params_file)) {
-# if (exists("sim_data") && nrow(sim_data) == sim_params$n_subjects__gt && ncol(sim_data) == sim_params$n_regions && all(names(positives__replication) == sim_params$sample_sizes) && sim_params$outcome_category == outcome_category__previous ) {
   old_sim_params <- readRDS(sim_params_file)
   if (identical(names(old_sim_params), names(sim_params)) &&
       all(vapply(names(sim_params), function(param) {
@@ -130,13 +160,12 @@ if (file.exists(sim_params_file)) {
 }
 
 # if it exists, ask whether to replace
-run_replication_only <- FALSE
 if (sim_data_exists) {
-  run_sim <- readline(prompt = "Simulations using same params already exist. Replace? (yes/no; select yes if sim code has changed): ")
-  run_sim <- tolower(run_sim) == "yes"
-  if (run_sim) {
-    run_replication_only <- readline(prompt = "Replace all? Otherwise will just re-run replication (yes/no): ")
-    run_replication_only <- tolower(run_replication_only) == "no"
+  if (ask_to_overwrite_if_exists) {
+    run_sim <- readline(prompt = "Simulations using same params already exist. Replace? (yes/no; select yes if sim code has changed): ")
+    run_sim <- tolower(run_sim) == "yes"
+  } else {
+    run_sim <- default_overwrite
   }
 } else {
   run_sim <- TRUE
@@ -146,19 +175,20 @@ if (sim_data_exists) {
 # Start Simulation
 
 if (run_sim) {
-if (!run_replication_only) {
 
 # simulate master dataset
 sim_info <- simulate_data(sim_params$n_subjects__gt, sim_params$n_regions, mu_crossbrain, sd_crossbrain, sd_crosssubject)
 ground_truth_true_effects <- sim_info$ground_truth_true_effects  #sim_info[1:sim_params$n_regions]
 sim_data <- sim_info$sim_data #matrix(sim_info[-(1:sim_params$n_regions)], nrow = sim_params$n_subjects__gt, ncol = sim_params$n_regions)
 
+# if 2-sample test: simulate control dataset  - TODO: in progress
+
 if (sim_params$n_regions %% 2 == 0) { # drop the min effect before mean to make things easier
   target_effect__actual_mean <- mean(ground_truth_true_effects[ground_truth_true_effects > min(ground_truth_true_effects > 0)], na.rm = TRUE)
 } else {
   target_effect__actual_mean <- mean(ground_truth_true_effects[ground_truth_true_effects > 0])
 }
-# get number that is closest to but bigger than mean so it's a liberal comparison (easier for inflation-based planning to hit)
+# get number that is closest to but bigger than mean so it's a conservative comparison (easier for inflation-based planning to hit)
 target_effect_idx__actual_mean <- which(ground_truth_true_effects==sort(ground_truth_true_effects[which(ground_truth_true_effects >= target_effect__actual_mean)], decreasing=FALSE)[1])
 
 
@@ -200,6 +230,7 @@ for (sample_size in sim_params$sample_sizes) {
     this_sig_mask <- this_res$positives
     sig_mask__basis[[as.character(sample_size)]][rep, ] <- this_sig_mask
     
+    # if 2-sample, subsample ctrl group also - TODO
     
     # Store parameters for replication study: general or significant effect sizes and associated n
     # Goal: detect the same effects
@@ -294,11 +325,6 @@ for (sample_size in sim_params$sample_sizes) {
 
 ######### 1B. REPLICATION STUDY #########
 
-} else {
-  message("Using existing sim_data and basis study results for replication study.")
-  load(sim_results_file) # note this is only to get pre-calculated basis study and we will replace the replication
-}
-
 # initialize
 positives__replication <- list()
 effect_sizes__replication <- list()
@@ -377,7 +403,8 @@ for (n in seq(10, 10000, by = 10)) {
 # Save results
 
 save(
-  list = c("num_tp__basis", "n_pos_above_target_effect_type__basis", "num_tp_expect__from_basis", "num_fp_expect__from_basis", "num_tp_expect__in_basis",
+  list = c("ground_truth_true_effects",  # must be saved so true_effect_regions / false_effect_regions are always consistent with the stored positives/effects
+           "num_tp__basis", "n_pos_above_target_effect_type__basis", "num_tp_expect__from_basis", "num_fp_expect__from_basis", "num_tp_expect__in_basis",
            "target_effect_idx__basis", "expected_n_to_replicate_basis_effect",
            "positives__replication", "effect_sizes__replication", "positives_uncorr__replication", "effect_sizes_uncorr__replication", "proportion_overlap_with_basis__replication",
            "expected_tpr__corrected", "expected_num_tp__corrected", "expected_n_for_target_num_tp__corrected"),
@@ -387,6 +414,7 @@ saveRDS(sim_params, file = sim_params_file)
   
 } else { # If skip sim, load previously saved results
   load(sim_results_file)
+  readRDS(sim_params_file)
 }
 
 
@@ -471,9 +499,9 @@ specs <- list(
   list(source = "region", col = "tpr",                  label = "Power (Mean Over Regions)",                        ylim = c(0, 0.5), plot = TRUE),
   list(source = "region", col = "type_m",               label = "Type M Error (Mean Over Regions)",                 ylim = c(0, 10), plot = TRUE),
   list(source = "region", col = "type_s",               label = "Type S Error (Mean Over Regions)",                 ylim = c(0, 0.5), plot = TRUE),
-  list(source = "target", col = "tpr_target_univ",      label = "Power for Target (Univariate)",                    ylim = c(0, 1), plot = TRUE),
-  list(source = "target", col = "type_m_target_univ",   label = "Type M Error for Target (Univariate)",             ylim = c(0, 10), plot = TRUE),
-  list(source = "target", col = "type_s_target_univ",   label = "Type S Error for Target (Univariate)",             ylim = c(0, 0.5), plot = TRUE),
+  # list(source = "target", col = "tpr_target_univ",      label = "Power for Target (Univariate)",                    ylim = c(0, 1), plot = TRUE),
+  # list(source = "target", col = "type_m_target_univ",   label = "Type M Error for Target (Univariate)",             ylim = c(0, 10), plot = TRUE),
+  # list(source = "target", col = "type_s_target_univ",   label = "Type S Error for Target (Univariate)",             ylim = c(0, 0.5), plot = TRUE),
   list(source = "target", col = "target_true",     label = "Rate Target Effect is a True Effect",              ylim = c(0, 1), plot = TRUE),
   list(source = "target", col = "target_detected", label = "Rate Target Effect is Detected",                   ylim = c(0, 1), plot = FALSE),
   list(source = "target", col = "target_tp",       label = "True Positive Rate for Target Effect",             ylim = c(0, 1), plot = TRUE),
@@ -575,11 +603,11 @@ for (sample_size in sim_params$sample_sizes) {
     basis_study_df$target_tn[this_rep]       <- !is_true && !is_detected
     
     positive_rate_univ <- colMeans(pos_mat_univ, na.rm = TRUE)
-    basis_study_df$tpr_target_univ[this_rep]    <- positive_rate_univ[target_effect_idx__actual_mean]
-    basis_study_df$type_m_target_univ[this_rep] <- abs(eff_mat_univ[this_rep, target_effect_idx__actual_mean]) / ground_truth_true_effects[target_effect_idx__actual_mean]
-    basis_study_df$type_s_target_univ[this_rep] <-
-      (eff_mat_univ[this_rep, target_effect_idx__actual_mean] < 0 & ground_truth_true_effects[target_effect_idx__actual_mean] > 0) |
-        (eff_mat_univ[this_rep, target_effect_idx__actual_mean] > 0 & ground_truth_true_effects[target_effect_idx__actual_mean] < 0)
+    # basis_study_df$tpr_target_univ[this_rep]    <- positive_rate_univ[target_effect_idx__actual_mean] # this is only for the mean, not max or same sample
+    # basis_study_df$type_m_target_univ[this_rep] <- abs(eff_mat_univ[this_rep, target_effect_idx__actual_mean]) / ground_truth_true_effects[target_effect_idx__actual_mean]
+    # basis_study_df$type_s_target_univ[this_rep] <-
+    #   (eff_mat_univ[this_rep, target_effect_idx__actual_mean] < 0 & ground_truth_true_effects[target_effect_idx__actual_mean] > 0) |
+    #     (eff_mat_univ[this_rep, target_effect_idx__actual_mean] > 0 & ground_truth_true_effects[target_effect_idx__actual_mean] < 0)
     
   }
   results_for_basis_study_region[[ss]] <- basis_study_df
@@ -645,7 +673,7 @@ for (i in seq_along(sim_params$sample_sizes)) {
   }
 }
 
-plot_summary <- function(summary, metric, metric_label, y_limits, out_dir = "~/Desktop/sim/") {
+plot_summary <- function(summary, metric, metric_label, y_limits, cat_color, out_dir = "~/Desktop/sim/") {
   
   str_mean <- metric
   if (grepl("_mean$", metric)) {
@@ -679,12 +707,12 @@ plot_summary <- function(summary, metric, metric_label, y_limits, out_dir = "~/D
   }
 
   p <- ggplot(df_plot, aes(x = x_num, y = point)) + # nolint
-    geom_line(size = 0.5) +
+    geom_line(size = 0.5, color = cat_color) +
     scale_x_continuous(breaks = df_plot$x_num, labels = df_plot$sample_size)
   
   # add ribbon if sd exists
   if (!is.null(str_sd)) {
-    p <- p + geom_ribbon(aes(x = x_num, ymin = lb, ymax = ub), alpha = 0.2, inherit.aes = FALSE) # nolint
+    p <- p + geom_ribbon(aes(x = x_num, ymin = lb, ymax = ub), alpha = transparency_main, fill = cat_color, inherit.aes = FALSE) # nolint
   }
     
   p <- p +
@@ -698,7 +726,7 @@ plot_summary <- function(summary, metric, metric_label, y_limits, out_dir = "~/D
 # plots — driven directly from specs, so adding a spec entry automatically adds a plot
 for (spec in specs) {
   if (isTRUE(spec$plot)) {
-    plot_summary(summary, summary_col_name(spec), spec$label, spec$ylim, out_dir = out_dir)
+    plot_summary(summary, summary_col_name(spec), spec$label, spec$ylim, cat_color = cat_colors[sim_params$outcome_category], out_dir = out_dir)
   }
 }
 # save summary variable if doesn't exist
@@ -707,3 +735,91 @@ for (spec in specs) {
 # }
 
 
+######### OVERLAY PLOT: Expected TPs (Uncorr) + Overlap by Category #########
+
+summary__this_cat <- summary
+summary__this_cat$category <- sim_params$outcome_category
+
+if (!is.null(summary__this_cat) && nrow(summary__this_cat) > 0) {
+
+  # Map sample_size to integer x positions
+  all_sample_sizes <- sort(unique(summary__this_cat$sample_size))
+  summary__this_cat$x_num <- match(summary__this_cat$sample_size, all_sample_sizes)
+
+  # Secondary x-axis labels: expected_n__replication for each sample_size
+  sec_x_breaks <- seq_along(all_sample_sizes)
+  sec_x_labels <- round(summary__this_cat$expected_n__replication_mean[match(all_sample_sizes, summary__this_cat$sample_size)])
+
+  # Dual y-axis scaling: right axis (overlap, 0-1) mapped onto left axis (expect_v_actual, 0-1.5)
+  left_max  <- 1.5
+  right_max <- 1.5
+  scale_factor <- left_max / right_max  # multiply right-axis values to plot on left scale
+
+  # Styling: right-axis series uses a dark-grey tint of left-axis color (low saturation, reduced brightness)
+  left_color <- cat_color
+  this_hsv <- rgb2hsv(col2rgb(left_color))
+  right_color <- hsv(h = this_hsv[1, 1], s = this_hsv[2, 1] * 0.3, v = this_hsv[3, 1] * 0.6)
+
+  p_overlay <- ggplot(summary__this_cat, aes(x = x_num)) +
+    # Left y-axis: proportion of expected TPs detected (uncorr) — solid line with ribbon
+    geom_ribbon(
+      aes(x = x_num,
+          ymin = expect_v_actual_n_tp__based_on_basis_mean - expect_v_actual_n_tp__based_on_basis_sd,
+          ymax = expect_v_actual_n_tp__based_on_basis_mean + expect_v_actual_n_tp__based_on_basis_sd),
+      fill = left_color, alpha = transparency_main, colour = NA, inherit.aes = FALSE
+    ) +
+    geom_ribbon(
+      aes(x = x_num,
+          ymin = (overlap_mean - overlap_sd) * scale_factor,
+          ymax = (overlap_mean + overlap_sd) * scale_factor),
+      fill = right_color, alpha = transparency_overlay, colour = NA, inherit.aes = FALSE
+    ) +
+
+    geom_line(aes(y = expect_v_actual_n_tp__based_on_basis_mean), linewidth = 0.7, colour = left_color) +
+    # Right y-axis: proportion of original findings replicated — dotted line (scaled to left axis)
+    geom_line(aes(y = overlap_mean * scale_factor), linewidth = 0.7, colour = right_color) +
+    # Y-axes
+    scale_y_continuous(
+      name   = "Proportion of Expected TPs Detected (Uncorr)",
+      sec.axis = sec_axis(
+        transform = ~ . / scale_factor,
+        name   = "Proportion of Overlap with Basis Study",
+        breaks = seq(0, right_max, by = 0.2)
+      )
+    ) +
+    coord_cartesian(ylim = c(0, left_max)) +
+    # X-axes: primary (bottom) = basis study sample size; secondary (top) = planned main N
+    scale_x_continuous(
+      name   = "Sample Size of Basis Study",
+      breaks = sec_x_breaks,
+      labels = all_sample_sizes,
+      sec.axis = sec_axis(
+        transform = ~ .,
+        breaks = sec_x_breaks,
+        labels = sec_x_labels,
+        name   = "Planned Sample Size for Main Study"
+      )
+    ) +
+    labs(
+      title  = "Expected TPs (Uncorr) and Overlap by Category"
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.title.y.left  = element_text(color = left_color),
+      axis.text.y.left   = element_text(color = left_color),
+      axis.title.y.right = element_text(color = right_color),
+      axis.text.y.right  = element_text(color = right_color)
+    )
+
+  ggsave(
+    filename = paste0(out_master_dir, sim_params$outcome_category, "/",sim_params$target_effect_type__from_basis, "_effect/overlay_tp_and_overlap.png"),
+    plot = p_overlay, width = 8, height = 5
+  )
+
+} else {
+  message("No category summary files found; skipping overlay plot.")
+}
+
+} # close target effect type loop
+} # close outcome category loop
