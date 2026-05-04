@@ -2,18 +2,20 @@
 ### Libraries
 
 library(dplyr)
+library(tidyr)
 library(ggplot2)
 library(metafor)
 library(tibble) # for rownames_to_column
 
 ### Set params & filenames
-pooling_type <- "net"
-motion_type <- "regression"
+pooling_type <- "none"
+motion_type <- "threshold"
 multi_string <- "multi" # "multi" or "mv\\.none"
 use_high_sample_size_only <- FALSE
 
-data_dir <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/xMore/Software/scripts/R/myscripts/effect_size/BrainEffeX_utils/inst/meta/'
-results_dir <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/manuscript/figures/plots/crossbrain_effects__spatial_extent/'
+# /Users/stephanienoble/
+data_dir <- '/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/xMore/Software/scripts/R/myscripts/effect_size/BrainEffeX_utils/inst/meta/'
+results_dir <- '/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/manuscript/figures/plots/crossbrain_effects__spatial_extent_d/'
 
 # rename results_dir based on motion and pooling
 results_dir <- paste0(results_dir, "pooling.", pooling_type, ".motion.", motion_type, "/")
@@ -23,7 +25,7 @@ if (!dir.exists(results_dir)) {
 
 # for combining models
 combine_models <- TRUE
-do_r2 <- TRUE
+do_r2 <- FALSE
 spatial_extents <- c("01","05", "10", "25", "50", "75", "100")
 categories <- c("psychological", "physical", "task activation", "task connectivity")
 
@@ -392,7 +394,8 @@ plot_param_fits <- function(this_study_level_data, predictions_mat, do_overlappi
     scale_color_manual(values = cat_colors) +
     scale_x_continuous(expand = c(0, 0), trans = "log") +
     theme_minimal() +
-    theme(legend.title = element_blank()) +
+    # theme(legend.title = element_blank()) +
+    theme(legend.position = "none") +
     coord_cartesian(ylim = c(-2.5, 7.5))
     # coord_cartesian(ylim = c(0.3, 1), xlim = c(0,0.05))
 
@@ -406,7 +409,7 @@ plot_param_fits <- function(this_study_level_data, predictions_mat, do_overlappi
   }
   
   fname <- paste0(results_dir, "param_fit_plot_", ifelse(do_overlapping, "overlapping", "individual"), ifelse(invert_x, "_inverted", ""), plot_string, ".png")
-  ggsave(p, filename = fname, width = 5, height = 5)
+  ggsave(p, filename = fname, width = 6, height = 5)
 }
 
 # # make individual plots
@@ -500,7 +503,7 @@ plot_model_params__individual <- function(df, category, do_r2) {
     geom_point() +
     geom_errorbar(aes(ymin = lwr, ymax = upr), width = 0.2) +
     xlim(rownames(df)) +
-    ylim(0, 1) +
+    ylim(0, ifelse(do_r2, 1, 4)) +
     labs(title = paste0("Model Parameters for ", category), x = "extent of brain included", y = paste0("Effect size (",esz_str,")")) +
     # add a line that's the max across est
     geom_hline(yintercept = max(df$est, na.rm = TRUE), linetype = "dashed", color = "red")
@@ -578,19 +581,99 @@ plot_model_params__overlapping <- function(df, do_r2, results_dir) {
     # scale_x_continuous(expand = c(0, 0), trans = "log") +
     scale_x_continuous(breaks = as.numeric(spatial_extents), labels = spatial_extents) +
     coord_cartesian(xlim = x_limits) +
-    coord_cartesian(ylim = c(0, 1)) +
+    coord_cartesian(ylim = c(0, ifelse(do_r2, 1, 4))) +
     geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
     # make legend small
     guides(color = guide_legend(override.aes = list(size = 0.5))) +
-    theme(legend.title = element_blank())
+    # theme(legend.title = element_blank())
+    theme(legend.position = "none")
   
   # show(p)
   # ggsave(this_fn, plot = p, width = 5, height = 4)
-  ggsave(p, filename = paste0(results_dir, "model_params_overlapping_", ifelse(do_r2, "r2", "d"), ".png"), width = 5, height = 4)
+  ggsave(p, filename = paste0(results_dir, "model_params_overlapping_", ifelse(do_r2, "r2", "d"), ".png"), width = 6, height = 4)
+}
+
+# also save difference between 5% and 50% as table
+log_differences <- function(df, do_r2, results_dir) {
+  all_df <- dplyr::bind_rows(lapply(as.character(categories), function(cat) {
+    df_cat <- as.data.frame(t(df[[cat]]))
+    df_cat$category <- cat
+    df_cat$extent <- suppressWarnings(as.numeric(rownames(df_cat)))
+    df_cat
+  }))
+  
+  diff_df <- all_df %>%
+    filter(extent %in% c(5, 50)) %>%
+    select(category, extent, est) %>%
+    pivot_wider(names_from = extent, values_from = est) %>%
+    mutate(diff = `50` - `5`) %>%
+    mutate(percent_increase = (`50` - `5`) / abs(`5`) * 100)
+  
+  if (do_r2) {
+    d2r2 <- function(d) { ifelse(d < 0, 0, d^2 / (d^2 + 4)) } # standard conversion a la hauselin
+    diff_df <- diff_df %>%
+      mutate(`5` = d2r2(`5`), `50` = d2r2(`50`), diff = d2r2(diff))
+  }
+  
+  write.csv(diff_df, file = paste0(results_dir, "model_params_diff_50_minus_05_", ifelse(do_r2, "r2", "d"), ".csv"), row.names = FALSE)
 }
     
 # make overlapping plot
 plot_model_params__overlapping(model_params_master, do_r2, results_dir)
- 
+log_differences(model_params_master, do_r2, results_dir)
 
 
+## a hack to merge since multivariate regression procedure does not exist for one-sample test:
+#
+## run once with motion <- "regression", manually define:
+# study_level_data_list_reg <- study_level_data_list
+# model_params_list_reg <- model_params_list
+# model_params_master_reg <- model_params_master
+#
+## run again with motion <- "threshold", manually define
+# study_level_data_list_threshold <- study_level_data_list
+# model_params_list_threshold <- model_params_list
+# model_params_master_threshold <- model_params_master
+#
+## keep only threshold for task categories:
+#
+# study_level_data_list_merge <- study_level_data_list_reg
+# for (this_extent in spatial_extents) {
+#   # remove task categories
+#   study_level_data_list_merge[[this_extent]] <- study_level_data_list_merge[[this_extent]][
+#     !study_level_data_list_merge[[this_extent]]$overarching_category %in% c("task activation", "task connectivity"), 
+#   ]
+#   # add task data from threshold
+#   thresh_data <- study_level_data_list_threshold[[this_extent]]
+#   task_data <- thresh_data[thresh_data$overarching_category %in% c("task activation", "task connectivity"), ]
+#   
+#   study_level_data_list_merge[[this_extent]] <- rbind(study_level_data_list_merge[[this_extent]], task_data)
+# }
+# 
+# model_params_list_merge <- model_params_list_reg
+# for (this_extent in spatial_extents) {
+#   # remove task categories
+#   model_params_list_merge[[this_extent]] <- model_params_list_merge[[this_extent]][
+#     !model_params_list_merge[[this_extent]]$overarching_category %in% c("task activation", "task connectivity"), 
+#   ]
+#   
+#   # add task stuff from threshold
+#   thresh_params <- model_params_list_threshold[[this_extent]]
+#   task_params <- thresh_params[thresh_params$overarching_category %in% c("task activation", "task connectivity"), ]
+#   
+#   model_params_list_merge[[this_extent]] <- rbind(model_params_list_merge[[this_extent]], task_params)
+# }
+# 
+# model_params_master_merge <- model_params_master_reg
+# model_params_master_merge$`task activation` <- model_params_master_threshold$`task activation`
+# model_params_master_merge$`task connectivity` <- model_params_master_threshold$`task connectivity`
+# 
+# # remake results
+# results_dir__merge <- paste0(results_dir, "merged/")
+# if (!dir.exists(results_dir__merge)) {
+#   dir.create(results_dir__merge, recursive = TRUE)
+# }
+# plot_param_fits(study_level_data_list_merge, model_params_list_merge, do_overlapping = TRUE, results_dir__merge)
+# plot_model_params__overlapping(model_params_master_merge, do_r2, results_dir__merge)
+# log_differences(model_params_master_merge, do_r2, results_dir__merge)
+# save(study_level_data_list_merge, model_params_list_merge, model_params_master_merge, file = paste0(results_dir__merge, "merged_results.RData"))

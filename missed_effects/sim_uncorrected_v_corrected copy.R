@@ -8,6 +8,7 @@
 ######### SET PATHS & sim_params #########
 
 # paths
+# project_dir <- "/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/"
 project_dir <- "/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/"
 out_master_dir <- paste0(project_dir, "manuscript/figures/plots/missed_effects/")
 crossbrain_effect_estimator_script <- paste0(project_dir, "scripts/crossbrain_effects/crossbrain_effect_estimator.R")
@@ -22,6 +23,12 @@ source(crossbrain_effect_estimator_script)
 
 all_outcome_categories <- c("psychological", "physical", "task activation", "task connectivity")
 all_target_effect_type__from_basis <- c("same_sample","max", "mean_without_selection")
+
+do_test <- TRUE
+if (do_test) {
+  all_outcome_categories <- all_outcome_categories[1]
+  all_target_effect_type__from_basis <- all_target_effect_type__from_basis[1]
+}
 
 for (outcome_category in all_outcome_categories) {
 for (target_effect_type__from_basis in all_target_effect_type__from_basis) {
@@ -51,10 +58,21 @@ names(cat_colors) <- cats
 cat_color <- cat_colors[sim_params$outcome_category]
 transparency_main <- 0.6
 transparency_overlay <- 0.5
+text_size <- 20
+ticks_size <- 24
 
 #   -cross-brain area and cross-subject distribution parameters (Cohen's)
 mu_crossbrain <- 0
-# var_crossbrain <- 0.04^2
+# var_crossbrain <- 0.04^2    theme_bw(base_size = ticks_size) +
+theme(
+  legend.position = "none",
+  plot.title = element_text(size = text_size-5),
+  axis.title.x = element_text(size = text_size),
+  axis.title.y.left  = element_text(size = text_size, color = left_color),
+  axis.text.y.left   = element_text(color = left_color),
+  axis.title.y.right = element_text(size = text_size, color = right_color),
+  axis.text.y.right  = element_text(color = right_color)
+)
 # var_crosssubject <- 1.29
 #   -covariance between brain areas
 # rho_values <- seq(0, 0.9, by = 0.1)
@@ -143,7 +161,7 @@ get_pos_and_effects <- function(X, alpha = 0.05, use_correction = TRUE) {
 
 ########################### MAIN ###########################
 
-
+print(paste0("Running: ", sim_params$outcome_category, " with target effect type from basis: ", sim_params$target_effect_type__from_basis))
 
 ######### SIMULATE DATA #########
 
@@ -175,6 +193,8 @@ if (sim_data_exists) {
 # Start Simulation
 
 if (run_sim) {
+  
+print("Simulating data...")
 
 # simulate master dataset
 sim_info <- simulate_data(sim_params$n_subjects__gt, sim_params$n_regions, mu_crossbrain, sd_crossbrain, sd_crosssubject)
@@ -413,6 +433,7 @@ save(
 saveRDS(sim_params, file = sim_params_file)
   
 } else { # If skip sim, load previously saved results
+  print("Simulations already exist - loading saved results...")
   load(sim_results_file)
   readRDS(sim_params_file)
 }
@@ -673,7 +694,7 @@ for (i in seq_along(sim_params$sample_sizes)) {
   }
 }
 
-plot_summary <- function(summary, metric, metric_label, y_limits, cat_color, out_dir = "~/Desktop/sim/") {
+plot_summary <- function(summary, metric, metric_label, y_limits, cat_color, text_size, ticks_size, out_dir = "~/Desktop/sim/") {
   
   str_mean <- metric
   if (grepl("_mean$", metric)) {
@@ -718,7 +739,12 @@ plot_summary <- function(summary, metric, metric_label, y_limits, cat_color, out
   p <- p +
     coord_cartesian(ylim = y_limits) +
     labs(title = metric_label, x = x_label, y = metric_label) +
-    theme_bw()
+    theme_bw(base_size = ticks_size) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(size = text_size),
+      axis.title = element_text(size = text_size)
+    )
 
   ggsave(filename = paste0(out_dir, metric, ".png"), plot = p, width = 6, height = 4)
 }
@@ -726,7 +752,7 @@ plot_summary <- function(summary, metric, metric_label, y_limits, cat_color, out
 # plots — driven directly from specs, so adding a spec entry automatically adds a plot
 for (spec in specs) {
   if (isTRUE(spec$plot)) {
-    plot_summary(summary, summary_col_name(spec), spec$label, spec$ylim, cat_color = cat_colors[sim_params$outcome_category], out_dir = out_dir)
+    plot_summary(summary, summary_col_name(spec), spec$label, spec$ylim, cat_color = cat_colors[sim_params$outcome_category], text_size, ticks_size, out_dir = out_dir)
   }
 }
 # save summary variable if doesn't exist
@@ -776,40 +802,31 @@ if (!is.null(summary__this_cat) && nrow(summary__this_cat) > 0) {
     ) +
 
     geom_line(aes(y = expect_v_actual_n_tp__based_on_basis_mean), linewidth = 0.7, colour = left_color) +
-    # Right y-axis: proportion of original findings replicated — dotted line (scaled to left axis)
+    # Overlap series (scaled to the same y-axis)
     geom_line(aes(y = overlap_mean * scale_factor), linewidth = 0.7, colour = right_color) +
-    # Y-axes
+    # Y-axis
     scale_y_continuous(
-      name   = "Proportion of Expected TPs Detected (Uncorr)",
-      sec.axis = sec_axis(
-        transform = ~ . / scale_factor,
-        name   = "Proportion of Overlap with Basis Study",
-        breaks = seq(0, right_max, by = 0.2)
-      )
+      name   = "Proportion Detected"
     ) +
     coord_cartesian(ylim = c(0, left_max)) +
     # X-axes: primary (bottom) = basis study sample size; secondary (top) = planned main N
     scale_x_continuous(
-      name   = "Sample Size of Basis Study",
+      name   = "Planned Sample Size (Main Study)",
       breaks = sec_x_breaks,
-      labels = all_sample_sizes,
+      labels = sec_x_labels,
       sec.axis = sec_axis(
         transform = ~ .,
         breaks = sec_x_breaks,
-        labels = sec_x_labels,
-        name   = "Planned Sample Size for Main Study"
+        labels = all_sample_sizes,
+        name   = "Sample Size of Basis Study"
       )
     ) +
-    labs(
-      title  = "Expected TPs (Uncorr) and Overlap by Category"
-    ) +
-    theme_bw() +
+    theme_bw(base_size = ticks_size) +
     theme(
       legend.position = "none",
-      axis.title.y.left  = element_text(color = left_color),
-      axis.text.y.left   = element_text(color = left_color),
-      axis.title.y.right = element_text(color = right_color),
-      axis.text.y.right  = element_text(color = right_color)
+      axis.title.x = element_text(size = text_size),
+      axis.title.y.left  = element_text(size = text_size, color = "black"),
+      axis.text.y.left   = element_text(color = "black")
     )
 
   ggsave(
