@@ -14,8 +14,8 @@ multi_string <- "multi" # "multi" or "mv\\.none"
 use_high_sample_size_only <- FALSE
 
 # /Users/stephanienoble/
-data_dir <- '/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/xMore/Software/scripts/R/myscripts/effect_size/BrainEffeX_utils/inst/meta/'
-results_dir <- '/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/manuscript/figures/plots/crossbrain_effects__spatial_extent_d/'
+data_dir <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/xMore/Software/scripts/R/myscripts/effect_size/BrainEffeX_utils/inst/meta/'
+results_dir <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/manuscript/figures/plots/crossbrain_effects__spatial_extent_d2/'
 
 # rename results_dir based on motion and pooling
 results_dir <- paste0(results_dir, "pooling.", pooling_type, ".motion.", motion_type, "/")
@@ -30,8 +30,13 @@ spatial_extents <- c("01","05", "10", "25", "50", "75", "100")
 categories <- c("psychological", "physical", "task activation", "task connectivity")
 
 # plotting params
-cat_colors <- RColorBrewer::brewer.pal(length(categories), "Set1")
-color_map <- setNames(RColorBrewer::brewer.pal(length(categories), "Set1"), categories)
+cat_colors <- setNames(RColorBrewer::brewer.pal(length(categories), "Set1"), categories)
+cat_colors[c("physical", "psychological")] <- cat_colors[c("psychological", "physical")] # switch to match usual colors
+axis_text_size <- 16
+axis_title_size <- 16
+line_width_main <- 1.4
+line_width_ci <- 1.1
+line_width_ref <- 0.6
 
 
 ##### LOAD & ORGANIZE ####
@@ -44,37 +49,37 @@ for (this_extent in spatial_extents) {
   
   # TODO: also need to check whether previous extracted data (e.g., pooling=net) matches the present one, or it will look like it's already loaded
   
-  
-  if (exists(paste0("study_level_data_", this_extent))) {
-    if (exists("existing_pooling_param") && (existing_pooling_param != pooling_type || existing_motion_param != motion_type)) {
-      load_data <- TRUE
-    } else {
-      if (isTRUE(repeat_overwrite_for_all) && !is.na(overwrite_all)) {
-        response <- if (overwrite_all) "y" else "n"
-        # cat(paste0("Using saved response for ", this_extent, "%: ", response, "\n"))
-      } else {
-        response <- readline(prompt = paste0("Data for ", this_extent, "% was already extracted. Do you want to re-load & extract this data? (y/n): "))
-        response_repeat <- readline(prompt = "Repeat your choice for all remaining extents? (y/n): ")
-        if (tolower(response_repeat) == "y") {
-          repeat_overwrite_for_all <- TRUE
-          overwrite_all <- tolower(response) == "y"
-        }
-      }
-  
-      if (tolower(response) != "y") {
-        cat(paste0("Skipping loading for ", this_extent, "%\n"))
-        load_data <- FALSE
-      } else {
-        cat(paste0("Overwriting data for ", this_extent, "%\n"))
-        load_data <- TRUE
-      }
-    }
-
-  } else {
-    load_data <- TRUE
-    existing_pooling_param <- pooling_type
-    existing_motion_param <- motion_type
-  }
+  load_data <- TRUE
+  # if (exists(paste0("study_level_data_", this_extent))) {
+  #   if (exists("existing_pooling_param") && (existing_pooling_param != pooling_type || existing_motion_param != motion_type)) {
+  #     load_data <- TRUE
+  #   } else {
+  #     if (isTRUE(repeat_overwrite_for_all) && !is.na(overwrite_all)) {
+  #       response <- if (overwrite_all) "y" else "n"
+  #       # cat(paste0("Using saved response for ", this_extent, "%: ", response, "\n"))
+  #     } else {
+  #       response <- readline(prompt = paste0("Data for ", this_extent, "% was already extracted. Do you want to re-load & extract this data? (y/n): "))
+  #       response_repeat <- readline(prompt = "Repeat your choice for all remaining extents? (y/n): ")
+  #       if (tolower(response_repeat) == "y") {
+  #         repeat_overwrite_for_all <- TRUE
+  #         overwrite_all <- tolower(response) == "y"
+  #       }
+  #     }
+  # 
+  #     if (tolower(response) != "y") {
+  #       cat(paste0("Skipping loading for ", this_extent, "%\n"))
+  #       load_data <- FALSE
+  #     } else {
+  #       cat(paste0("Overwriting data for ", this_extent, "%\n"))
+  #       load_data <- TRUE
+  #     }
+  #   }
+  # 
+  # } else {
+  #   load_data <- TRUE
+  #   existing_pooling_param <- pooling_type
+  #   existing_motion_param <- motion_type
+  # }
   
   if (load_data) {
     v_filename <- list.files(data_dir, pattern = paste0("braineffex_data_", this_extent, "_percent_.*\\.RData$"), full.names = TRUE)
@@ -332,6 +337,8 @@ plot_param_fits <- function(this_study_level_data, predictions_mat, do_overlappi
     x_pwr_factor <- 1
   }
   title_txt <- "Parameter fit plot"
+  fit_axis_text_size <- axis_text_size + 2
+  fit_axis_title_size <- axis_title_size + 2
 
   if (do_overlapping) {
     predictions_mat <- dplyr::bind_rows(lapply(names(predictions_mat), function(this_extent) {
@@ -346,25 +353,29 @@ plot_param_fits <- function(this_study_level_data, predictions_mat, do_overlappi
     
     study_level_data_df$extent_num <- suppressWarnings(as.numeric(as.character(study_level_data_df$extent)))
     study_level_data_df$point_alpha <- scales::rescale(study_level_data_df$extent_num, to = c(0.25, 1), na.rm = TRUE)
+    study_level_data_df$extent_legend <- factor(study_level_data_df$extent, levels = spatial_extents)
     predictions_mat$extent_num <- suppressWarnings(as.numeric(as.character(predictions_mat$extent)))
     predictions_mat$line_alpha <- scales::rescale(predictions_mat$extent_num, to = c(0.25, 1), na.rm = TRUE)
+    predictions_mat$extent_legend <- factor(predictions_mat$extent, levels = spatial_extents)
     predictions_mat$line_group <- interaction(predictions_mat$overarching_category, predictions_mat$extent)
     
   } else {
     study_level_data_df <- this_study_level_data
     predictions_mat <- build_predictions_mat(predictions_mat)
     study_level_data_df$point_alpha <- 1
+    study_level_data_df$extent_legend <- factor("all")
     predictions_mat$line_alpha <- 1
+    predictions_mat$extent_legend <- factor("all")
     predictions_mat$line_group <- predictions_mat$overarching_category
   }
 
   p <- ggplot(data = study_level_data_df, aes(x = (n/k2)^x_pwr_factor, y = d, color = overarching_category)) +
   # p <- ggplot(data = study_level_data_df, aes(x = k²/n, y = d, color = overarching_category)) +
-    geom_point(aes(alpha = point_alpha), size=0.1) +
+    geom_point(aes(alpha = extent_legend), size=0.1) +
     geom_line(
       data = predictions_mat,
-      mapping = aes(x = X^x_pwr_factor, y = preds, color = overarching_category, group = line_group, alpha = line_alpha),
-      linewidth = 1,
+      mapping = aes(x = X^x_pwr_factor, y = preds, color = overarching_category, group = line_group, alpha = extent_legend),
+      linewidth = line_width_main,
       inherit.aes = FALSE
     )
   
@@ -372,32 +383,52 @@ plot_param_fits <- function(this_study_level_data, predictions_mat, do_overlappi
     p <- p +
     geom_line(
       data = predictions_mat,
-      mapping = aes(x = X^x_pwr_factor, y = lwr, color = overarching_category, group = line_group, alpha = line_alpha),
-      linewidth = 0.8,
+      mapping = aes(x = X^x_pwr_factor, y = lwr, color = overarching_category, group = line_group, alpha = extent_legend),
+      linewidth = line_width_ci,
       linetype = "dotted",
       inherit.aes = FALSE
     ) +
     geom_line(
       data = predictions_mat,
-      mapping = aes(x = X^x_pwr_factor, y = upr, color = overarching_category, group = line_group, alpha = line_alpha),
-      linewidth = 0.8,
+      mapping = aes(x = X^x_pwr_factor, y = upr, color = overarching_category, group = line_group, alpha = extent_legend),
+      linewidth = line_width_ci,
       linetype = "dotted",
       inherit.aes = FALSE
     )
     }
     
     p <- p +
-    scale_alpha_identity() +
     labs(title = title_txt,
          x = "n/k²",
          y = "Effect Size (d)") +
-    scale_color_manual(values = cat_colors) +
-    scale_x_continuous(expand = c(0, 0), trans = "log") +
+        scale_color_manual(values = cat_colors) +
+    scale_x_continuous(
+      expand = c(0, 0),
+      trans = "log",
+      labels = function(x) format(round(x), trim = TRUE, scientific = FALSE)
+    ) +
     theme_minimal() +
     # theme(legend.title = element_blank()) +
-    theme(legend.position = "none") +
+    theme(
+      legend.position = "right",
+      legend.justification = c("left", "center"),
+      axis.text.x = element_text(size = fit_axis_text_size, angle = 0, hjust = 0.5, vjust = 1, margin = margin(t = 0)),
+      axis.text.y = element_text(size = fit_axis_text_size),
+      axis.title.x = element_text(size = fit_axis_title_size),
+      axis.title.y = element_text(size = fit_axis_title_size),
+      legend.text = element_text(size = fit_axis_text_size),
+      legend.title = element_text(size = fit_axis_title_size)
+    ) +
     coord_cartesian(ylim = c(-2.5, 7.5))
     # coord_cartesian(ylim = c(0.3, 1), xlim = c(0,0.05))
+
+  if (do_overlapping) {
+    alpha_values <- scales::rescale(as.numeric(spatial_extents), to = c(0.25, 1), na.rm = TRUE)
+    names(alpha_values) <- spatial_extents
+    p <- p + scale_alpha_manual(values = alpha_values, name = "Extent (%)")
+  } else {
+    p <- p + scale_alpha_manual(values = c(all = 1), guide = "none")
+  }
 
   # show(p)
   if (!do_overlapping) {
@@ -409,7 +440,7 @@ plot_param_fits <- function(this_study_level_data, predictions_mat, do_overlappi
   }
   
   fname <- paste0(results_dir, "param_fit_plot_", ifelse(do_overlapping, "overlapping", "individual"), ifelse(invert_x, "_inverted", ""), plot_string, ".png")
-  ggsave(p, filename = fname, width = 6, height = 5)
+  ggsave(p, filename = fname, width = 8, height = 5)
 }
 
 # # make individual plots
@@ -488,6 +519,7 @@ for (cat in categories) {
 plot_model_params__individual <- function(df, category, do_r2) {
   
   df <- as.data.frame(t(df[[category]]))
+  extent_labels <- setNames(as.character(as.numeric(rownames(df))), rownames(df))
   
   
   # TODO: figure out how want to deal with one-sample r2 - if (grep(category, "task")) {
@@ -499,20 +531,33 @@ plot_model_params__individual <- function(df, category, do_r2) {
   }
   else {esz_str <- "d"}
   
-  ggplot(df, aes(x=rownames(df), y = est)) +
+  p <- ggplot(df, aes(x=rownames(df), y = est)) +
     geom_point() +
-    geom_errorbar(aes(ymin = lwr, ymax = upr), width = 0.2) +
+    geom_errorbar(aes(ymin = lwr, ymax = upr), width = 0.2, linewidth = line_width_ci) +
     xlim(rownames(df)) +
+    scale_x_discrete(labels = extent_labels) +
     ylim(0, ifelse(do_r2, 1, 4)) +
     labs(title = paste0("Model Parameters for ", category), x = "extent of brain included", y = paste0("Effect size (",esz_str,")")) +
     # add a line that's the max across est
-    geom_hline(yintercept = max(df$est, na.rm = TRUE), linetype = "dashed", color = "red")
+    geom_hline(yintercept = max(df$est, na.rm = TRUE), linetype = "dashed", color = "red", linewidth = line_width_ref) +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(size = axis_text_size),
+      axis.text.y = element_text(size = axis_text_size),
+      axis.title.x = element_text(size = axis_title_size),
+      axis.title.y = element_text(size = axis_title_size)
+    )
+
+  vline_positions <- which(rownames(df) %in% c("05", "50"))
+  if (length(vline_positions) > 0) {
+    p <- p + geom_vline(xintercept = vline_positions, linetype = "dashed", color = "grey60", linewidth = 2*line_width_ref)
+  }
   
   #make dir
   if (!dir.exists(paste0(results_dir, "/cat"))) {
     dir.create(paste0(results_dir, "/cat"))
   }
-  ggsave(filename = paste0(results_dir, "/cat/model_params_individual_", category, "_", ifelse(do_r2, "r2", "d"), ".png"), width = 5, height = 4)
+  ggsave(filename = paste0(results_dir, "/cat/model_params_individual_", category, "_", ifelse(do_r2, "r2", "d"), ".png"), plot = p, width = 5, height = 4)
 }
 
 # make individual plots
@@ -532,7 +577,6 @@ plot_model_params__overlapping <- function(df, do_r2, results_dir) {
   x_limits <- c(0, 100)
   categories <- c("psychological", "physical", "task activation", "task connectivity")
   categories <- factor(categories, levels = categories) # fix order
-  color_map <- setNames(RColorBrewer::brewer.pal(length(categories), "Set1"), categories)
   this_fn <- "~/Desktop/test_plot.png"
 
   
@@ -561,10 +605,11 @@ plot_model_params__overlapping <- function(df, do_r2, results_dir) {
   
   
   p <- ggplot(all_df, aes(x = extent, y = est, color = category)) +
-    geom_line(aes(x = extent, y = est, color = category), linewidth = 1, alpha = alpha) +
-    geom_line(aes(x = extent, y = lwr, color = category), linetype = "dotted", linewidth = 0.8, alpha = alpha) +
-    geom_line(aes(x = extent, y = upr, color = category), linetype = "dotted", linewidth = 0.8, alpha = alpha) +
-    scale_color_manual(values = color_map) +
+    geom_line(aes(x = extent, y = est, color = category), linewidth = line_width_main, alpha = alpha) +
+    geom_line(aes(x = extent, y = lwr, color = category), linetype = "dotted", linewidth = line_width_ci, alpha = alpha) +
+    geom_line(aes(x = extent, y = upr, color = category), linetype = "dotted", linewidth = line_width_ci, alpha = alpha) +
+    geom_vline(xintercept = c(5, 50), linetype = "dashed", color = "grey60", linewidth = 2 * line_width_ref, alpha = 0.5) +
+    scale_color_manual(values = cat_colors) +
     labs(title = main_title,
          x = x_label,
          y = y_label,
@@ -575,14 +620,21 @@ plot_model_params__overlapping <- function(df, do_r2, results_dir) {
       legend.position = c(0.98, 0.98),
       legend.justification = c("right", "top"),
       legend.key.size = unit(0.7, "lines"),
+      axis.text.x = element_text(size = axis_text_size),
+      axis.text.y = element_text(size = axis_text_size),
+      axis.title.x = element_text(size = axis_title_size),
+      axis.title.y = element_text(size = axis_title_size),
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank()
     ) +
     # scale_x_continuous(expand = c(0, 0), trans = "log") +
-    scale_x_continuous(breaks = as.numeric(spatial_extents), labels = spatial_extents) +
+    scale_x_continuous(
+      breaks = as.numeric(spatial_extents),
+      labels = as.character(as.numeric(spatial_extents))
+    ) +
     coord_cartesian(xlim = x_limits) +
     coord_cartesian(ylim = c(0, ifelse(do_r2, 1, 4))) +
-    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.3) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = line_width_ref) +
     # make legend small
     guides(color = guide_legend(override.aes = list(size = 0.5))) +
     # theme(legend.title = element_blank())
@@ -623,57 +675,284 @@ plot_model_params__overlapping(model_params_master, do_r2, results_dir)
 log_differences(model_params_master, do_r2, results_dir)
 
 
-## a hack to merge since multivariate regression procedure does not exist for one-sample test:
-#
-## run once with motion <- "regression", manually define:
-# study_level_data_list_reg <- study_level_data_list
-# model_params_list_reg <- model_params_list
-# model_params_master_reg <- model_params_master
-#
-## run again with motion <- "threshold", manually define
-# study_level_data_list_threshold <- study_level_data_list
-# model_params_list_threshold <- model_params_list
-# model_params_master_threshold <- model_params_master
-#
-## keep only threshold for task categories:
-#
-# study_level_data_list_merge <- study_level_data_list_reg
-# for (this_extent in spatial_extents) {
-#   # remove task categories
-#   study_level_data_list_merge[[this_extent]] <- study_level_data_list_merge[[this_extent]][
-#     !study_level_data_list_merge[[this_extent]]$overarching_category %in% c("task activation", "task connectivity"), 
-#   ]
-#   # add task data from threshold
-#   thresh_data <- study_level_data_list_threshold[[this_extent]]
-#   task_data <- thresh_data[thresh_data$overarching_category %in% c("task activation", "task connectivity"), ]
-#   
-#   study_level_data_list_merge[[this_extent]] <- rbind(study_level_data_list_merge[[this_extent]], task_data)
-# }
-# 
-# model_params_list_merge <- model_params_list_reg
-# for (this_extent in spatial_extents) {
-#   # remove task categories
-#   model_params_list_merge[[this_extent]] <- model_params_list_merge[[this_extent]][
-#     !model_params_list_merge[[this_extent]]$overarching_category %in% c("task activation", "task connectivity"), 
-#   ]
-#   
-#   # add task stuff from threshold
-#   thresh_params <- model_params_list_threshold[[this_extent]]
-#   task_params <- thresh_params[thresh_params$overarching_category %in% c("task activation", "task connectivity"), ]
-#   
-#   model_params_list_merge[[this_extent]] <- rbind(model_params_list_merge[[this_extent]], task_params)
-# }
-# 
-# model_params_master_merge <- model_params_master_reg
-# model_params_master_merge$`task activation` <- model_params_master_threshold$`task activation`
-# model_params_master_merge$`task connectivity` <- model_params_master_threshold$`task connectivity`
-# 
-# # remake results
-# results_dir__merge <- paste0(results_dir, "merged/")
-# if (!dir.exists(results_dir__merge)) {
-#   dir.create(results_dir__merge, recursive = TRUE)
-# }
-# plot_param_fits(study_level_data_list_merge, model_params_list_merge, do_overlapping = TRUE, results_dir__merge)
-# plot_model_params__overlapping(model_params_master_merge, do_r2, results_dir__merge)
-# log_differences(model_params_master_merge, do_r2, results_dir__merge)
-# save(study_level_data_list_merge, model_params_list_merge, model_params_master_merge, file = paste0(results_dir__merge, "merged_results.RData"))
+## Automated merge workflow: run both motion types and combine
+
+compute_motion_results <- function(motion_type_local,
+                                   pooling_type,
+                                   data_dir,
+                                   spatial_extents,
+                                   categories,
+                                   use_high_sample_size_only = FALSE) {
+
+  extract_metric <- function(dat, metric, pooling_type, motion_type) {
+    unlist(lapply(dat, function(x) {
+      x1 <- x[grepl("multi", names(x))]
+      x1 <- x1[grepl(paste0("pooling\\.", pooling_type), names(x1))]
+      lapply(x1[grepl(paste0("motion\\.", motion_type), names(x1))], `[[`, metric)
+    }), recursive = FALSE)
+  }
+
+  d_se <- function(d, n1, n2 = NULL) {
+    if (is.null(n2)) {
+      sqrt(1 / n1 + (d^2 / (2 * n1)))
+    } else {
+      sqrt((n1 + n2) / (n1 * n2) + (d^2 / (2 * (n1 + n2))))
+    }
+  }
+
+  study_level_data_list_local <- list()
+
+  for (this_extent in spatial_extents) {
+    v_filename <- list.files(
+      data_dir,
+      pattern = paste0("braineffex_data_", this_extent, "_percent_.*\\.RData$"),
+      full.names = TRUE
+    )
+    load(v_filename)
+
+    d_list <- extract_metric(v$data, "d", pooling_type, motion_type_local)
+    n_list <- extract_metric(v$data, "n", pooling_type, motion_type_local)
+    n1_list <- extract_metric(v$data, "n1", pooling_type, motion_type_local)
+    n2_list <- extract_metric(v$data, "n2", pooling_type, motion_type_local)
+
+    study_name <- sub("\\..*$", "", names(d_list))
+    df <- v$study
+    df <- df[match(study_name, tolower(df$name)), ]
+
+    df$d <- unlist(d_list[match(tolower(df$name), study_name)])
+    df$n <- unlist(n_list[match(tolower(df$name), study_name)])
+    df$n1 <- unlist(n1_list[match(tolower(df$name), study_name)])
+    df$n2 <- unlist(n2_list[match(tolower(df$name), study_name)])
+    df$k2 <- ifelse(df$orig_stat_type == "t", 1, 4)
+
+    df <- df[!grepl("test", df$name), ]
+    df <- df[!duplicated(df$name), ]
+
+    df$category[df$category == "clinical"] <- "psychiatric"
+    df$category[df$test_component_2 == "bmi"] <- "biometric"
+    df$category[grepl("sex", tolower(df$test_component_2))] <- "sex (demographic)"
+    df$category[grepl("gender", tolower(df$test_component_2))] <- "sex (demographic)"
+    df$category[df$test_component_2 == "cbcl_scr_syn_internal_t_FU1"] <- "psychiatric"
+    df$category[grep("age", df$name)] <- "age (demographic)"
+    df$category[df$category == "cognitive" & df$orig_stat_type == "t"] <- "cognitive (task)"
+
+    need_to_flip <- which(
+      grepl("abcd", tolower(df$dataset)) &
+      df$map_type == "fc" &
+      df$orig_stat_type == "t" &
+      tolower(df$test_component_2) != "rest"
+    )
+    if (length(need_to_flip) > 0) {
+      tmp <- df$test_component_1[need_to_flip]
+      df$test_component_1[need_to_flip] <- df$test_component_2[need_to_flip]
+      df$test_component_2[need_to_flip] <- tmp
+      df$name[need_to_flip] <- sapply(need_to_flip, function(i) {
+        new_name <- gsub(df$test_component_1[i], "tmp", df$name[i])
+        new_name <- gsub(df$test_component_2[i], df$test_component_1[i], new_name)
+        gsub("tmp", df$test_component_2[i], new_name)
+      })
+      df$basefile[need_to_flip] <- sapply(need_to_flip, function(i) {
+        new_basefile <- gsub(df$test_component_1[i], "tmp", df$basefile[i])
+        new_basefile <- gsub(df$test_component_2[i], df$test_component_1[i], new_basefile)
+        gsub("tmp", df$test_component_2[i], new_basefile)
+      })
+    }
+
+    df <- df %>%
+      mutate(overarching_category = case_when(
+        category %in% c("biometric", "sex (demographic)", "age (demographic)") ~ "physical",
+        category %in% c("cognitive", "psychiatric") ~ "psychological",
+        category == "cognitive (task)" & !grepl("act", map_type) ~ "task connectivity",
+        category == "cognitive (task)" & grepl("act", map_type) ~ "task activation",
+        TRUE ~ "other"
+      ))
+
+    df$overarching_category <- as.factor(df$overarching_category)
+    study_level_data_list_local[[this_extent]] <- df
+  }
+
+  common_studies_local <- Reduce(
+    intersect,
+    lapply(spatial_extents, function(this_extent) tolower(study_level_data_list_local[[this_extent]]$name))
+  )
+
+  for (this_extent in spatial_extents) {
+    df <- study_level_data_list_local[[this_extent]]
+    study_level_data_list_local[[this_extent]] <- df[tolower(df$name) %in% common_studies_local, ]
+  }
+
+  model_params_by_extent <- list()
+  model_params_list_local <- list()
+
+  for (this_extent in spatial_extents) {
+    df <- study_level_data_list_local[[this_extent]]
+
+    n <- numeric(nrow(df))
+    d_var <- numeric(nrow(df))
+
+    for (i in seq_len(nrow(df))) {
+      if (df$orig_stat_type[[i]] == "t2") {
+        if (!is.null(df$n1[i])) {
+          n[i] <- df$n1[i] + df$n2[i]
+          d_var[i] <- d_se(df$d[i], df$n1[i], df$n2[i])^2
+        } else {
+          n[i] <- df$n[i]
+          d_var[i] <- NA
+        }
+      } else if (df$orig_stat_type[i] == "t" || df$orig_stat_type[i] == "r") {
+        n[i] <- df$n[i]
+        if (df$orig_stat_type[i] == "r") {
+          d_var[i] <- d_se(df$d[i], df$n[i] / 2, df$n[i] / 2)^2
+        } else {
+          d_var[i] <- d_se(df$d[i], df$n[i])^2
+        }
+      } else {
+        n[i] <- NA
+      }
+    }
+
+    if (use_high_sample_size_only) {
+      d_var[is.na(df$n) | df$n <= 2000] <- 15 * d_var[is.na(df$n) | df$n <= 2000]
+    }
+
+    fit_all <- rma.mv(
+      yi = d,
+      V = d_var,
+      mods = ~ I(k2/n),
+      random = ~ 1 | overarching_category,
+      data = df,
+      method = "REML"
+    )
+
+    random_effects <- ranef(fit_all)
+    category_effects <- random_effects$overarching_category
+    unique_cats <- unique(df$overarching_category)
+
+    model_params <- vector("list", length(unique_cats))
+    names(model_params) <- unique_cats
+
+    slope <- fit_all$beta[2]
+    slope_se <- sqrt(fit_all$vb[2, 2])
+
+    for (cat in unique_cats) {
+      cat_intercept <- fit_all$beta[1] + category_effects[cat, "intrcpt"]
+      cat_intercept_se <- sqrt(fit_all$vb[1, 1] + category_effects[cat, "se"]^2)
+      model_params[[cat]] <- data.frame(
+        est = cat_intercept,
+        lwr = cat_intercept - 1.96 * cat_intercept_se,
+        upr = cat_intercept + 1.96 * cat_intercept_se,
+        est_se = cat_intercept_se,
+        phi2_est = slope,
+        phi2_lwr = slope - 1.96 * slope_se,
+        phi2_upr = slope + 1.96 * slope_se,
+        phi2_se = slope_se,
+        row.names = paste0(cat, "_intercept")
+      )
+    }
+
+    model_params_by_extent[[this_extent]] <- model_params
+    model_params_list_local[[this_extent]] <- do.call(rbind, model_params) %>%
+      rownames_to_column("category") %>%
+      mutate(overarching_category = sub("_intercept", "", category))
+  }
+
+  model_params_master_local <- setNames(vector("list", length(categories)), categories)
+  names(model_params_master_local) <- categories
+
+  for (cat in categories) {
+    vecs <- lapply(model_params_by_extent, function(m) {
+      x <- m[[cat]]
+      if (is.null(x)) return(setNames(numeric(0), character(0)))
+      setNames(as.numeric(unlist(x[1, ], use.names = TRUE)), names(unlist(x[1, ], use.names = TRUE)))
+    })
+
+    rn <- Reduce(union, lapply(vecs, names))
+    mat <- sapply(vecs, function(v) {
+      out <- setNames(rep(NA_real_, length(rn)), rn)
+      if (length(v) > 0) out[names(v)] <- v
+      out
+    }, simplify = "matrix")
+
+    colnames(mat) <- spatial_extents
+    model_params_master_local[[cat]] <- as.data.frame(mat, check.names = FALSE)
+  }
+
+  list(
+    study_level_data_list = study_level_data_list_local,
+    model_params_list = model_params_list_local,
+    model_params_master = model_params_master_local
+  )
+}
+
+motion_results_reg <- compute_motion_results(
+  motion_type_local = "regression",
+  pooling_type = pooling_type,
+  data_dir = data_dir,
+  spatial_extents = spatial_extents,
+  categories = categories,
+  use_high_sample_size_only = use_high_sample_size_only
+)
+
+motion_results_threshold <- compute_motion_results(
+  motion_type_local = "threshold",
+  pooling_type = pooling_type,
+  data_dir = data_dir,
+  spatial_extents = spatial_extents,
+  categories = categories,
+  use_high_sample_size_only = use_high_sample_size_only
+)
+
+study_level_data_list_reg <- motion_results_reg$study_level_data_list
+model_params_list_reg <- motion_results_reg$model_params_list
+model_params_master_reg <- motion_results_reg$model_params_master
+
+study_level_data_list_threshold <- motion_results_threshold$study_level_data_list
+model_params_list_threshold <- motion_results_threshold$model_params_list
+model_params_master_threshold <- motion_results_threshold$model_params_master
+
+study_level_data_list_merge <- study_level_data_list_reg
+for (this_extent in spatial_extents) {
+  study_level_data_list_merge[[this_extent]] <- study_level_data_list_merge[[this_extent]][
+    !study_level_data_list_merge[[this_extent]]$overarching_category %in% c("task activation", "task connectivity"),
+  ]
+
+  thresh_data <- study_level_data_list_threshold[[this_extent]]
+  task_data <- thresh_data[thresh_data$overarching_category %in% c("task activation", "task connectivity"), ]
+  study_level_data_list_merge[[this_extent]] <- rbind(study_level_data_list_merge[[this_extent]], task_data)
+}
+
+model_params_list_merge <- model_params_list_reg
+for (this_extent in spatial_extents) {
+  model_params_list_merge[[this_extent]] <- model_params_list_merge[[this_extent]][
+    !model_params_list_merge[[this_extent]]$overarching_category %in% c("task activation", "task connectivity"),
+  ]
+
+  thresh_params <- model_params_list_threshold[[this_extent]]
+  task_params <- thresh_params[thresh_params$overarching_category %in% c("task activation", "task connectivity"), ]
+  model_params_list_merge[[this_extent]] <- rbind(model_params_list_merge[[this_extent]], task_params)
+}
+
+model_params_master_merge <- model_params_master_reg
+model_params_master_merge$`task activation` <- model_params_master_threshold$`task activation`
+model_params_master_merge$`task connectivity` <- model_params_master_threshold$`task connectivity`
+
+results_dir__merge <- paste0(results_dir, "merged/")
+if (!dir.exists(results_dir__merge)) {
+  dir.create(results_dir__merge, recursive = TRUE)
+}
+
+plot_param_fits(study_level_data_list_merge, model_params_list_merge, do_overlapping = TRUE, results_dir__merge)
+plot_model_params__overlapping(model_params_master_merge, do_r2, results_dir__merge)
+log_differences(model_params_master_merge, do_r2, results_dir__merge)
+save(
+  study_level_data_list_reg,
+  model_params_list_reg,
+  model_params_master_reg,
+  study_level_data_list_threshold,
+  model_params_list_threshold,
+  model_params_master_threshold,
+  study_level_data_list_merge,
+  model_params_list_merge,
+  model_params_master_merge,
+  file = paste0(results_dir__merge, "merged_results.RData")
+)
