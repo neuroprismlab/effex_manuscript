@@ -45,6 +45,31 @@ cat_colors[c(1,2)] <- cat_colors[c(2,1)]
 names(cat_colors) <- cats
 n_pts <- 10000
 
+# Centralize plotting and export sizes/appearance in one place.
+plot_params <- list(
+  estimate_fits = list(
+    base_width = 5,
+    base_height = 4
+  ),
+  density = list(
+    do_horizontal_panels = TRUE,
+    xlim_annotate = c(-0.2, 0.2),
+    xbreaks = c(-2, 1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2),
+    axis_text_size = 20,
+    axis_title_size = 20,
+    base_width = 4.2,
+    base_height = 3.5
+  ),
+  power = list(
+    do_horizontal_panels = TRUE,
+    base_width = 4.2,
+    single_col_width = 4.5,
+    base_height = 3.5,
+    axis_text_size = 20,
+    axis_title_size = 20
+  )
+)
+
 # make output directory if it doesn't exist
 if (!dir.exists(fn_basedir)) {
   print(paste0('Creating output directory: ', fn_basedir))
@@ -162,34 +187,56 @@ for (j in seq_along(all_datasets)) {
 total_n <- sum(all_ns, na.rm = TRUE)
 
 
-## Plot
+## Estimate & Plot
   
 plot_extra <- FALSE # TODO - tmp
 
-# get point est and conservative est
-res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Cross-Brain Effects", paste0(fn_basedir,'point'))
-# get multivariate effect sizes
-res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Multivariate Effects", paste0(fn_basedir,'mv_est'), plot_type = "mv")
+# Estimate effect sizes & plot param estimation plot
+# - mass univariate (corrected cross-brain distribution)
+res_fn_basename <- paste0(fn_basedir,'point')
+# res_fn <- paste0(res_fn_basename,'_res.Rdata')
+# if (file.exists(res_fn)) { # first try to load file if exists
+#   load(res_fn)
+# } else {
+  all_res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Cross-Brain Effects", res_fn_basename, plot_params = plot_params)
+  #res is only est lwr upr
+  res <- all_res[c("est", "lwr", "upr")]
+  phi2 <- all_res[c("phi2_est", "phi2_lwr", "phi2_upr")]
+# }
+# - multivariate
+res_fn_mv_basename <- paste0(fn_basedir,'mv_est')
+# res_fn_mv <- paste0(res_fn_mv_basename,'_res.Rdata')
+# if (file.exists(res_fn_mv)) {
+#   res_mv <- get(load(res_fn_mv))
+# } else {
+  res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Multivariate Effects", res_fn_mv_basename, plot_type = "mv", plot_params = plot_params)
+# }
 
 # Make density plots
-sigmas_master <- plot_densities(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, save_plots)
+sigmas_master <- plot_densities(res, res_mv,  n_pts, fn_basedir, cat_colors, save_plots, plot_params = plot_params)
 
 # Power plots
-# - mass univariate
-results_uv <- get_average_power(sigmas_master, do_mv = FALSE)
-avg_power <- results_uv$avg_power
-proportion_detectable <- results_uv$proportion_detectable
+do_other_power_plots <- TRUE # TODO: temporary
+if (do_other_power_plots) {
+  # - mass univariate
+  results_uv <- get_average_power(sigmas_master, do_mv = FALSE)
+  avg_power <- results_uv$avg_power
+  proportion_detectable <- results_uv$proportion_detectable
+  
+  plot_average_power(avg_power, do_mv = FALSE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+  plot_proportion_detectable(proportion_detectable, do_mv = FALSE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+  
+  # - multivariate
+  results_uv <- get_average_power(sigmas_master, res_mv = res_mv, do_mv = TRUE)
+  avg_power_mv <- results_uv$avg_power
+  proportion_detectable_mv <- results_uv$proportion_detectable
+  
+  plot_average_power(avg_power_mv, do_mv = TRUE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+  plot_proportion_detectable(proportion_detectable_mv, do_mv = TRUE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+}
 
-plot_average_power(avg_power, do_mv = FALSE, cat_colors,fn_basedir)
-plot_proportion_detectable(proportion_detectable, do_mv = FALSE, cat_colors,fn_basedir)
-
-# - multivariate
-results_uv <- get_average_power(sigmas_master, res_mv = res_mv, do_mv = TRUE)
-avg_power_mv <- results_uv$avg_power
-proportion_detectable_mv <- results_uv$proportion_detectable
-
-plot_average_power(avg_power_mv, do_mv = TRUE, cat_colors,fn_basedir)
-plot_proportion_detectable(proportion_detectable_mv, do_mv = TRUE, cat_colors,fn_basedir)
+# Power mismatch plots
+plot_proportion_difference(sigmas_master, phi2, cat_colors, fn_basedir)
 
 # # Req'd n plots:
 # # - mass univariate
@@ -204,8 +251,8 @@ plot_proportion_detectable(proportion_detectable_mv, do_mv = TRUE, cat_colors,fn
 
 if (plot_extra) {
   # conservative and large n
-  res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'))
-  res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'))
+  res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'), plot_params = plot_params)
+  res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'), plot_params = plot_params)
 }
 
 
@@ -539,13 +586,15 @@ get_study_summaries <- function(data, study, estimate, combo_name) {
 
 # Function for plotting effect sizes (mean, sd, n) for each study - point est and conservative  
 
-estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "crossvariable") {
+estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "crossvariable", plot_params = NULL) {
   
   print(paste0('Fitting lines for ', main_title))
   
   # params
   ndivk_max_extra_padding <- 1000 # so plot xlim extend a bit beyond max n
   use_var_xv__emp <- FALSE
+  fit_base_width <- plot_params$estimate_fits$base_width
+  fit_base_height <- plot_params$estimate_fits$base_height
   
   # Determine y variable and settings based on plot_type
   if (plot_type == "crossvariable") {
@@ -586,11 +635,11 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
     
     # set up for each overarching category
     unique_cats <- unique(df$overarching_category)
-    # if 'task activation' exists in unique_cats, make it come right after 'task connectivity'
-    if ("task activation" %in% unique_cats) {
-      unique_cats <- c(setdiff(unique_cats, "task connectivity"), "task connectivity")
-      unique_cats <- c(setdiff(unique_cats, "task activation"), "task activation")
-    }
+    # # if 'task activation' exists in unique_cats, make it come right after 'task connectivity'
+    # if ("task activation" %in% unique_cats) {
+    #   unique_cats <- c(setdiff(unique_cats, "task connectivity"), "task connectivity")
+    #   unique_cats <- c(setdiff(unique_cats, "task activation"), "task activation")
+    # }
     predicted_y <- vector("list", length(unique_cats))
     names(predicted_y) <- unique_cats
       
@@ -672,6 +721,9 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
           est = cat_intercept,
           lwr = cat_intercept - 1.96 * cat_intercept_se,
           upr = cat_intercept + 1.96 * cat_intercept_se,
+          phi2_est = slope,
+          phi2_lwr = slope - 1.96 * slope_se,
+          phi2_upr = slope + 1.96 * slope_se,
           row.names = paste0(cat, "_intercept")
         )
         
@@ -765,17 +817,21 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
     fn_plot <- fn
     this_fn <- paste0(fn_plot, "__fits", meta_str, '.pdf')
     if (save_plots) {
-      ggsave(this_fn, plot = p, width = 5, height = 4)
+      ggsave(this_fn, plot = p, width = fit_base_width, height = fit_base_height)
     } else {
       show(p)
     }
     
     # Save normality test results
     if (save_plots  && plot_type != "mv") {
+      write.csv(paste0('Proportion significantly non-normal: ', sum(df$shapiro < 0.05)/length(df$shapiro),' (',sum(df$shapiro < 0.05),' studies)'),file=paste0(fn, '_shapiro_proportion_sig.csv'))
       write.csv(df$shapiro, file=paste0(fn, '_shapiro.csv'), row.names=TRUE)
-      print(paste0('Proportion significantly non-normal: ', sum(df$shapiro < 0.05)/length(df$shapiro),' (',sum(df$shapiro < 0.05),' studies)'))
     }
   }
+  
+  # save res Rdata
+  this_fn <- paste0(fn, '_res.Rdata')
+  save(res, file = this_fn)
   
   return(res)
 }
@@ -783,18 +839,21 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
 
 ###########  Make Estimated Density Plots ########### 
 
-plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, save_plots = TRUE) {
+plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cat_colors, save_plots = TRUE, plot_params = NULL) {
 
   print('Making density plots')
-  # cats <- unique(rownames(res))
+  cats <- unique(rownames(res))
   # cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
   
   # params
-  do_horizontal_panels <- TRUE
-  xlim_annotate <- c(-0.2, 0.2)
-  xbreaks <- c(-2, 1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2)
-  axis_text_size <- 14
-  axis_title_size <- 16
+  density_cfg <- plot_params$density
+  do_horizontal_panels <- density_cfg$do_horizontal_panels
+  xlim_annotate <- density_cfg$xlim_annotate
+  xbreaks_base <- density_cfg$xbreaks
+  axis_text_size <- density_cfg$axis_text_size
+  axis_title_size <- density_cfg$axis_title_size
+  base_width <- density_cfg$base_width
+  base_height <- density_cfg$base_height
   
   for (do_mv in c(FALSE, TRUE)) {
     if (do_mv) {
@@ -802,17 +861,21 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
       xlim <- c(0, 5)
       xlim_annotate[1] <- 0
       xtick_angle <- 45 # fit stuff if mv
-      xbreaks <- xbreaks[xbreaks >= xlim[1]]
+      xbreaks <- sort(unique(xbreaks_base[xbreaks_base >= xlim[1]]))
+      xbreaks <- xbreaks[abs(xbreaks - 0.2) > 1e-9]
       vjust <- 1
       hjust <- 1
     } else {
       mv_suffix <- ''
       xlim <- c(-0.8, 0.8)
-      xtick_angle <- 0
-      vjust <- 0.5
-      hjust <- 0.5
+      xtick_angle <- 45
+      xbreaks <- xbreaks_base
+      vjust <- 1
+      hjust <- 1
     }
     d <- seq(xlim[1], xlim[2], length.out = n_pts)
+    width <- base_width
+    height <- base_height
     
   
   # preallocate
@@ -847,17 +910,22 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
       }
       
     } else {
-      vars <- c(res[cat,"lwr"], res[cat,"est"], res[cat,"upr"])
-      vars <- pmax(vars, 0) # no negative variances
-      sigmas <- sqrt(vars)
-      # print(sigmas)
-      names(sigmas) <- c('lwr','est','upr')
-      sigmas_master <- rbind(sigmas_master, sigmas)
+      # vars <- c(res[cat,"lwr"], res[cat,"est"], res[cat,"upr"])
+      # vars <- pmax(vars, 0) # no negative variances
+      # sigmas <- sqrt(vars)
+      # # print(sigmas)
+      # names(sigmas) <- c('lwr','est','upr')
+      # sigmas_master <- rbind(sigmas_master, sigmas)
+      
+      res[res < 0] <- 0 # no negative variances
+      sigmas_master <- sqrt(res)
+      sigmas <- sigmas_master[cat, ]
+      
       
       # If not mv, make y as dnorm for each sigma (lwr, est, upr)
       for (name in names(sigmas)) {
         
-        s <- sigmas[name]
+        s <- sigmas[[name]]
         
         if (s > 0) {
           y <- dnorm(d, mean = 0, sd = s)
@@ -887,11 +955,11 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
     }
   }
   
-  if (!do_mv) {
-    sigmas_master <- as.data.frame(sigmas_master)
-    rownames(sigmas_master) <- cats
+  # if (!do_mv) {
+    # sigmas_master <- as.data.frame(sigmas_master)
+    # rownames(sigmas_master) <- cats
     # TODO: can probably just use res, instead of recreating and renaming sigmas_master
-  }
+  # }
   
   
   density_df <- do.call(rbind, density_list)
@@ -903,16 +971,17 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
     geom_line(size = 1) +
     scale_color_manual(values = cat_colors) +
     labs(title = "Density Plot by Overarching Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
-    theme_bw() +
+    theme_classic() +
     coord_cartesian(xlim = xlim, ylim = c(0, y_max)) +
     theme(
+      axis.text.x = element_text(angle = xtick_angle, vjust = vjust, hjust = hjust, size = axis_text_size),
       legend.position = c(0.02, 0.98),
       legend.justification = c("left", "top"),
       legend.background = element_rect(fill = "white", color = "grey80"),
       legend.key.size = unit(0.7, "lines")
     )
   if (save_plots) {
-    ggsave(paste0(fn_basedir, 'density',mv_suffix,'.pdf'), p_density, width = 5, height = 4)
+    ggsave(paste0(fn_basedir, 'density',mv_suffix,'.pdf'), p_density, width = width, height = height)
   } else {
     print(p_density)
   }
@@ -921,12 +990,12 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
   
   if (do_horizontal_panels) {
     nrow <- 1
-    width = 4 * length(cats)
-    height = 3.8
+    panel_width <- width * length(cats) #4 * length(cats)
+    panel_height <- height #3.5 #3.8
   } else {
     nrow <- length(cats)
-    width = 5
-    height = 3.8 * length(cats)
+    panel_width <- width
+    panel_height <- height * length(cats) #3.8 * length(cats)
   }
   density_df$fill <- density_df$sigma_type=="est"
   
@@ -951,14 +1020,14 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
       scale_x_continuous(breaks = xbreaks) +
       # labs(title = cat) +
       labs(title = cat, x = "Cohen's d", y = "Density") +
-      theme_bw() +
+      theme_classic() +
       theme(legend.position = "none",
             axis.text.x = element_text(angle = xtick_angle, vjust = vjust, hjust = hjust, size = axis_text_size),
             axis.text.y = element_text(size = axis_text_size),
-            axis.title.x = element_text(size = axis_title_size),
-            axis.title.y = element_text(size = axis_title_size)
-            # axis.title.x = element_blank(),
-            # axis.title.y = element_blank()
+            # axis.title.x = element_text(size = axis_title_size),
+            # axis.title.y = element_text(size = axis_title_size)
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank()
             )
     
     plot_list[[cat]] <- p
@@ -989,7 +1058,7 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
   #     legend.key.size = unit(0.7, "lines")
   #   )
   if (save_plots) {
-    ggsave(paste0(fn_basedir, 'density__panels',mv_suffix,'.pdf'), p_density_panel, width = width, height = height)
+    ggsave(paste0(fn_basedir, 'density__panels',mv_suffix,'.pdf'), p_density_panel, width = panel_width, height = panel_height)
   } else {
     print(p_density_panel)
   }
@@ -1009,8 +1078,6 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cats, cat_colors, sa
 }
 
 ##### POWER PLOTS #####
-
-##### UNDER CONSTRUCTION #####
 
 # make average power vs. sample size plots
 
@@ -1111,43 +1178,47 @@ get_average_power <- function(sigmas_master, res_mv = NULL, do_mv = FALSE) {
 
 # plot avg power
 
-plot_average_power <- function(df, do_mv = FALSE, cat_colors, fn_basedir) {
+plot_average_power <- function(df, do_mv = FALSE, cat_colors, fn_basedir, save_plots = TRUE, plot_params = NULL) {
   
   print("Making power plots")
-  do_horizontal_panels <- TRUE
+  power_cfg <- plot_params$power
+  do_horizontal_panels <- power_cfg$do_horizontal_panels
   
   title <- if (do_mv) "Average Power by Category (Multivariate)" else "Average Power by Category"
   filename <- if (do_mv) 'power_panels_mv.pdf' else 'power_panels.pdf'
   
   if (do_horizontal_panels) {
     nrow <- 1
-    width = 4 * length(cat_colors)
-    height = 4
+    width <- power_cfg$base_width * length(cat_colors)
+    height <- power_cfg$base_height
   } else {
     nrow <- length(cat_colors)
-    width = 5
-    height = 4 * length(cat_colors)
+    width <- power_cfg$single_col_width
+    height <- power_cfg$base_height * length(cat_colors)
   }
   
   n_str <- as.character(sort(unique(df$n)))
   n_str[length(n_str)] <- "∞"
+  x100_idx <- match(100, sort(unique(df$n)))
   
   p <- ggplot(df, aes(x = factor(n), y = avg_power, group = interaction(overarching_category,correction_type), color = overarching_category, linetype = correction_type)) +
-    geom_line(size = 1) +
+    geom_line(size = 1.5) +
     scale_x_discrete(labels = n_str) +
     scale_color_manual(values = cat_colors) +
+    scale_linetype_manual(values = c("uncorrected" = "solid", "fdr"  = "dashed", "bonferroni" = "dotted")) +
     facet_wrap(~overarching_category, nrow = nrow, scales = "free_y") +
     labs(title = title, x = "Sqrt Sample Size", y = "Average Power", color = "Category", linetype = "Correction Type") +
-    guides(color = "none") +
-    theme_bw() +
+    theme_classic() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
-      legend.position = c(0.02, 0.98),
-      legend.justification = c("left", "top"),
-      legend.background = element_rect(fill = "white", color = "grey80"),
-      legend.key.width = unit(1.5, "lines"),
-      legend.key.height = unit(0.8, "lines")
+      strip.text = element_blank(),
+      strip.background = element_blank(),
+      legend.position = "none"
     )
+
+  if (!is.na(x100_idx)) {
+    p <- p + geom_vline(xintercept = x100_idx, linetype = "dotted", color = "grey60", linewidth = 0.8)
+  }
   
   if (save_plots) {
     ggsave(paste0(fn_basedir, filename), p, width = width, height = height)
@@ -1157,49 +1228,53 @@ plot_average_power <- function(df, do_mv = FALSE, cat_colors, fn_basedir) {
 }
 
 # plot proportion detectable
-plot_proportion_detectable <- function(df, do_mv = FALSE, cat_colors, fn_basedir) {
+plot_proportion_detectable <- function(df, do_mv = FALSE, cat_colors, fn_basedir, save_plots = TRUE, plot_params = NULL) {
   
-  do_horizontal_panels <- TRUE
+  power_cfg <- plot_params$power
+  do_horizontal_panels <- power_cfg$do_horizontal_panels
   
   title <- if (do_mv) "Proportion Detectable by Category (Multivariate)" else "Proportion Detectable by Category"
   filename <- if (do_mv) 'proportion_detect_mv.pdf' else 'proportion_detect.pdf'
   
   if (do_horizontal_panels) {
     nrow <- 1
-    width = 4 * length(cat_colors)
-    height = 4
+    width <- power_cfg$base_width * length(cat_colors)
+    height <- power_cfg$base_height
   } else {
     nrow <- length(cat_colors)
-    width = 5
-    height = 4 * length(cat_colors)
+    width <- power_cfg$single_col_width
+    height <- power_cfg$base_height * length(cat_colors)
   }
-  axis_text_size <- 14
-  axis_title_size <- 16
+  axis_text_size <- power_cfg$axis_text_size
+  axis_title_size <- power_cfg$axis_title_size
   
   n_str <- as.character(sort(unique(df$n)))
   n_str[length(n_str)] <- "∞"
+  x100_idx <- match(100, sort(unique(df$n)))
   
   p <- ggplot(df, aes(x = factor(n), y = proportion_detectable, group = interaction(overarching_category,correction_type), color = overarching_category, linetype = correction_type)) +
-    geom_line(size = 1) +
+    geom_line(size = 1.5) +
     scale_x_discrete(labels = n_str) +
     scale_color_manual(values = cat_colors) +
+    scale_linetype_manual(values = c("uncorrected" = "solid", "fdr"  = "dashed", "bonferroni" = "dotted")) +
     facet_wrap(~overarching_category, nrow = nrow, scales = "free_y") +
     labs(title = title, x = "Sample Size", y = "Proportion Detectable", color = "Category", linetype = "Correction Type") +
-    guides(color = "none") +
-    theme_bw() +
+    theme_classic() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, size = axis_text_size),
       axis.text.y = element_text(size = axis_text_size),
-      axis.title.x = element_text(size = axis_title_size),
-      axis.title.y = element_text(size = axis_title_size),
-      # axis.title.x = element_blank(),
-      # axis.title.y = element_blank(),
-      legend.position = c(0.02, 0.98),
-      legend.justification = c("left", "top"),
-      legend.background = element_rect(fill = "white", color = "grey80"),
-      legend.key.width = unit(1.5, "lines"),
-      legend.key.height = unit(0.8, "lines")
+      # axis.title.x = element_text(size = axis_title_size),
+      # axis.title.y = element_text(size = axis_title_size),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      strip.text = element_blank(),
+      strip.background = element_blank(),
+      legend.position = "none"
     )
+
+  if (!is.na(x100_idx)) {
+    p <- p + geom_vline(xintercept = x100_idx, linetype = "dotted", color = "grey60", linewidth = 0.8)
+  }
   
   if (save_plots) {
     ggsave(paste0(fn_basedir, filename), p, width = width, height = height)
@@ -1209,131 +1284,65 @@ plot_proportion_detectable <- function(df, do_mv = FALSE, cat_colors, fn_basedir
 }
 
 
-##### TODO: CHECK IF NEEDED AND REMOVE #####
-##### REQUIRED N PLOTS #####
-# get req'd n and bin
-
-make_required_n_df <- function(n_pts, sigmas_master, res_mv = NULL, do_mv = FALSE) {
+# proportion detected under different estimation conditions
+plot_proportion_difference <- function(sigmas_master, phi2, cat_colors, fn_basedir) {
   
-  if (do_mv) {
-    mv_suffix <- '_mv'
-    xlim <- c(0, 6)
-  } else {
-    mv_suffix <- ''
-    xlim <- c(-0.8, 0.8)
-  }
-  d <- seq(xlim[1], xlim[2], length.out = n_pts)
-
+  alpha <- 0.05
+  n_sides <- 2 # two-tailed test
+  target_power <- 0.8
   
-  # Safe wrapper for pwr.t.test to handle edge cases
-  safe_pwr <- function(dd, test_type) {
-    if (is.na(dd) || abs(dd) < 1e-6) {
-      return(Inf)  # Very small effect sizes require infinite sample size
-    }
-    tryCatch({
-      pwr.t.test(power = 0.8, d = abs(dd), sig.level = 0.05/2, type = test_type)$n
-    }, error = function(e) {
-      return(Inf)  # Return Inf if calculation fails
-    })
-  }
+  n_vector <- c(0, 25, 50, 100, 500, 1000, 5000)
   
-  n_bins <- c(0, 25, 50, 100, 500, 1000, 5000, 50000, 300000, Inf)
-  bin_labels <- paste(head(n_bins, -1), n_bins[-1]-1, sep = "–")
-  required_n_df <- NULL
-  
-  # get cats from res
+  # get categories
   cats <- rownames(sigmas_master)
+  
+  # preallocate
+  proportion_detectable <- data.frame()
+  diff_detections <- data.frame()
+  
   for (cat in cats) {
     
-    # run power
+    # # set number of groups
     if (grepl("task", cat)) {
-      test_type <- "one.sample"
+      n_groups <- 1
     } else {
-      test_type <- "two.sample"
+      n_groups <- 2
     }
     
-    if (do_mv) {
-      y <- rep(0, length(d))
-      if (!is.null(res_mv) && cat %in% rownames(res_mv)) {
-        closest_idx <- which.min(abs(d - res_mv[cat, "est"])) # TODO: this should use sigmas_master for mv instead; but then again, we should be able to just use res instead of sigmas throughout
-        y[closest_idx] <- 1
-      }
-      
-      n_detect <- sapply(d, function(dd) safe_pwr(dd, test_type))
-      # n_detect_two <- sapply(d, function(dd) safe_pwr(dd, "two.sample"))
-      bin_indices <- cut(n_detect, breaks = n_bins, include.lowest = TRUE, labels = bin_labels)
-      
-    } else {
-      sigmas <- sigmas_master[cat, ]
-      y <- dnorm(d, mean = 0, sd = as.numeric(sigmas["est"]))
-      
-      # V1
-      n_detect <- sapply(d, function(dd) safe_pwr(dd, test_type))
-      bin_indices <- cut(n_detect, breaks = n_bins, include.lowest = TRUE, labels = bin_labels)
-      
-    }
+    # this_sigma_uncorrected <- sqrt(sigmas_master[cat, "est"]^2 + n_groups^2 * phi2 / n)
+    # this_sigma <- sigmas_master[cat, "est"]
     
-    binned_sums <- tapply(y, bin_indices, sum, na.rm = TRUE)
-    binned_sums <- binned_sums / sum(binned_sums, na.rm = TRUE)
-    binned_sums[!is.na(binned_sums)] <- cumsum(binned_sums[!is.na(binned_sums)])
-    tmp_df <- data.frame(
-      bin = bin_labels,
-      cumulative_proportion = as.numeric(binned_sums),
-      overarching_category = cat
-    )
-    required_n_df <- rbind(required_n_df, tmp_df)
+    #preallocate
+    proportion_detectable_tmp <- data.frame(n = n_vector, overarching_category = cat)
+    proportion_detectable_tmp__uncorrected <- data.frame(n = n_vector, overarching_category = cat)
+    diff_detections_tmp <- data.frame(n = n_vector, overarching_category = cat)
+    
+    # Scenario 1: if you plan for an average effect
+    proportion_detectable_tmp$uncorrected <- sapply(n_vector, function(n) proportion_detectable(alpha, 1-target_power, 0, sigmas_master[cat, "est"]*sqrt(n/n_groups^2),n_groups,n_sides))
+    proportion_detectable_tmp__uncorrected$uncorrected <- sapply(n_vector, function(n) proportion_detectable(alpha, 1-target_power, 0, sqrt(sigmas_master[cat, "est"]^2 + n_groups^2 * phi2[cat, "phi2_est"] / n)*sqrt(n/n_groups^2),n_groups,n_sides))
+    diff_detections_tmp$uncorrected <- proportion_detectable_tmp$uncorrected - proportion_detectable_tmp__uncorrected$uncorrected
+    
+    # proportion_detectable_tmp$bonferroni <- sapply(n_vector, function(n) proportion_detectable(alpha/k, 1-target_power, 0, this_sigma*sqrt(n/n_groups^2),n_groups,n_sides))
+    # proportion_detectable_tmp$fdr <- sapply(n_vector, function(n) BH_proportion_detectable(0, alpha, 1-target_power, 0, this_sigma*sqrt(n/n_groups^2),n_groups,n_sides))
+    
+      
+      
+      # Scenario 2: if you plan for the strongest effect size (take top 10%)
+      # prop_detect_est_strong <- proportion_detectable(alpha = 0.05, power = 0.8, mu = 0, sigma = sigma_uncorrected*sqrt(n/n_groups), n_groups = n_groups, n_sides = 2)
+      # prop_detect_actual_strong <- proportion_detectable(alpha = 0.05, power = 0.8, mu = 0, sigma = sigma_actual*sqrt(n/n_groups), n_groups = n_groups, n_sides = 2)
+      
+    diff_detections_tmp <- diff_detections_tmp %>%
+      pivot_longer(
+        cols = c(uncorrected),
+        names_to = "correction_type",
+        values_to = "diff_proportion_detectable"
+      )
+    
+    diff_detections <- rbind(diff_detections, diff_detections_tmp)
+    
   }
   
-  required_n_df$bin <- factor(required_n_df$bin, levels = bin_labels, ordered = TRUE)
-  # Preserve facet order to match cats vector
-  required_n_df$overarching_category <- factor(required_n_df$overarching_category, levels = cats)
-  return(required_n_df)
-}
-
-
-# plot req'd n
-
-plot_required_n_panel <- function(df, do_mv = FALSE, cat_colors, fn_basedir) {
+  # TODO: plot both
   
-  do_horizontal_panels <- TRUE
-  
-  title <- if (do_mv) "Required n for 80% Power by Category (Multivariate)" else "Required n for 80% Power by Category"
-  filename <- if (do_mv) 'sample_size__panels_mv.pdf' else 'sample_size__panels.pdf'
-  # Add line segment from y=0 to y=y[1] at x=1 if y[1] != 0 for each category
-  segment_df <- df %>% group_by(overarching_category) %>% filter(row_number() == 1 & cumulative_proportion[1] != 0)
-  
-  if (do_horizontal_panels) {
-    nrow <- 1
-    width = 4 * length(cat_colors)
-    height = 4
-  } else {
-    nrow <- length(cat_colors)
-    width = 5
-    height = 4 * length(cat_colors)
-  }
-  
-  p <- ggplot(df, aes(x = bin, y = cumulative_proportion, group = overarching_category, color = overarching_category)) +
-    geom_ribbon(aes(ymin = 0, ymax = cumulative_proportion, fill = overarching_category),
-                alpha = 0.35, inherit.aes = TRUE, show.legend = FALSE) +
-    geom_line(size = 1) +
-    scale_color_manual(values = cat_colors) +
-    scale_fill_manual(values = cat_colors) + # remap fill colors
-    facet_wrap(~overarching_category, nrow = nrow, scales = "free_y") +
-    labs(title = title, x = "Minimum sample size bin", y = "Cumulative Proportion of Effects", color = "Category") +
-    theme_bw() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      legend.position = c(0.02, 0.98),
-      legend.justification = c("left", "top"),
-      legend.background = element_rect(fill = "white", color = "grey80"),
-      legend.key.size = unit(0.7, "lines")
-    )
-  if (nrow(segment_df) > 0) {
-    p <- p + geom_segment(data = segment_df, aes(x = 1, xend = 1, y = 0, yend = cumulative_proportion, color = overarching_category), inherit.aes = FALSE, size = 1)
-  }
-  if (save_plots) {
-    ggsave(paste0(fn_basedir, filename), p, width = width, height = height)
-  } else {
-    print(p)
-  }
+  return(diff_detections)
 }

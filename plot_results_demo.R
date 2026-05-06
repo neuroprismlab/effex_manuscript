@@ -1,7 +1,7 @@
 # Demo for generating Effect Size Project results manuscript figures
 
 # set paths
-source('/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/scripts/smn_pathsetter.R')
+source('/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/scripts/smn_pathsetter.R')
 if (!exists('project_dir')) { # temp trigger to use pre-set paths
   print('Assuming script is in working directory and creating results in working directory.')
   script_path <- 'plot_results.R'
@@ -14,8 +14,8 @@ source(script_path)
 
 # set params
 estimate = 'd' # only works for d currently, need to fix calculate_effex/effect_size/scripts/checker.R to work for r_sq
-pooling_methods = c('none', 'net')
-motion_methods = c('none','regression','threshold') # motion method for other tests
+pooling_methods = 'none' #c('none', 'net')
+motion_methods = 'regression' #c('none','regression','threshold') # motion method for other tests
 save_plots = TRUE # whether to save the plots
 get_data_from_OSF = FALSE
 osf_file_id <- 'g84tk'
