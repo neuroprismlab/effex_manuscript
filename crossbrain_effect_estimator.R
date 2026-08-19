@@ -36,6 +36,7 @@ library(tidyr)
 library(RColorBrewer)
 library(metafor)
 library(patchwork)
+library(bayesmeta) # Bayes regression one
   
 # set add'l params
 n_large_threshold <- 900
@@ -44,6 +45,7 @@ cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
 cat_colors[c(1,2)] <- cat_colors[c(2,1)]
 names(cat_colors) <- cats
 n_pts <- 10000
+use_bayesian_fit <- TRUE
 
 # Centralize plotting and export sizes/appearance in one place.
 plot_params <- list(
@@ -648,27 +650,61 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
     # setup grouping variables
     df$dataset_nested <- interaction(df$overarching_category, df$dataset, drop = TRUE)
     
+        use_bayesian_fit <- FALSE  # set TRUE to use bayesmeta::bmr() instead of metafor::rma.mv()
+                                # NOTE: bmr() has no equivalent of the category/dataset_nested
+                                # nesting — it pools all heterogeneity into a single tau.
+
     if (plot_type == "mv") {
-      fit_all <- rma.mv(yi = mv, 
-                        V = vi_mv,  # approximate variance from CI
-                        random = ~ 1 | overarching_category/dataset_nested,
-                        data = df,
-                        method = "REML")
+      if (use_bayesian_fit) {
+        keep <- !is.na(df$mv) & !is.na(df$vi_mv)
+        X_bayes <- matrix(1, nrow = sum(keep), ncol = 1,
+                           dimnames = list(NULL, "intercept"))
+        fit_all <- bmr(y = df$mv[keep],
+                        sigma = sqrt(df$vi_mv[keep]),
+                        X = X_bayes,
+                        labels = df$name[keep],
+                        tau.prior = "uniform")
+      } else {
+        fit_all <- rma.mv(yi = mv, 
+                          V = vi_mv,  # approximate variance from CI
+                          random = ~ 1 | overarching_category/dataset_nested,
+                          data = df,
+                          method = "REML")
+      }
+
     } else {
       if (use_var_xv__emp) {
-        fit_all <- rma.mv(yi = var_xv__emp, 
-                          V = vi_var_xv__emp,  # approximate variance
-                          mods = ~ I(k/n),
-                          random = ~ 1 | overarching_category/dataset_nested,
-                          data = df,
-                          method = "REML")
+        y_var <- df$var_xv__emp
+        v_var <- df$vi_var_xv__emp
       } else {
-        fit_all <- rma.mv(yi = var_xv, 
-                          V = vi_var_xv,  # approximate variance
-                          mods = ~ I(k/n),
-                          random = ~ 1 | overarching_category/dataset_nested,
-                          data = df,
-                          method = "REML")
+        y_var <- df$var_xv
+        v_var <- df$vi_var_xv
+      }
+
+      if (use_bayesian_fit) {
+        keep <- !is.na(y_var) & !is.na(v_var) & !is.na(df$k) & !is.na(df$n)
+        X_bayes <- cbind("intercept" = 1, "invn" = (df$k / df$n)[keep])
+        fit_all <- bmr(y = y_var[keep],
+                        sigma = sqrt(v_var[keep]),
+                        X = X_bayes,
+                        labels = df$name[keep],
+                        tau.prior = "uniform")
+      } else {
+        if (use_var_xv__emp) {
+          fit_all <- rma.mv(yi = var_xv__emp, 
+                            V = vi_var_xv__emp,
+                            mods = ~ I(k/n),
+                            random = ~ 1 | overarching_category/dataset_nested,
+                            data = df,
+                            method = "REML")
+        } else {
+          fit_all <- rma.mv(yi = var_xv, 
+                            V = vi_var_xv,
+                            mods = ~ I(k/n),
+                            random = ~ 1 | overarching_category/dataset_nested,
+                            data = df,
+                            method = "REML")
+        }
       }
     }
     
