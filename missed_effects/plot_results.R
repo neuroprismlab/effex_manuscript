@@ -16,7 +16,7 @@ plot_results <- function(
     stop("plot_results_multicat requires the gridExtra package.")
   }
 
-  build_summary_multicat_plot <- function(target_effect_type, metric, metric_label, y_limits, hline_yintercept = NULL, vline_xintercept = 3.5) {
+  build_summary_multicat_plot <- function(target_effect_type, metric, metric_label, y_limits, hline_yintercept = NULL, vline_xintercept = 3) {
     plot_list <- lapply(seq_along(all_outcome_categories), function(category_idx) {
       this_category <- all_outcome_categories[category_idx]
       summary_path <- paste0(out_master_dir, this_category, "/", target_effect_type, "_effect/summary_results.rds")
@@ -182,7 +182,7 @@ plot_results <- function(
           inherit.aes = FALSE
         ) +
         geom_hline(yintercept = 1, colour = "grey50", linetype = "dashed", linewidth = 2, alpha = 0.75) +
-        geom_vline(xintercept = 3.5, colour = "grey50", linetype = "dotted", linewidth = 3, alpha = 0.5) +
+        geom_vline(xintercept = 3, colour = "grey50", linetype = "dotted", linewidth = 3, alpha = 0.5) +
         geom_line(aes(y = expect_v_actual_n_tp__based_on_basis_mean), linewidth = 0.7, colour = left_color) +
         geom_line(aes(y = overlap_mean), linewidth = 0.7, colour = right_color) +
         scale_y_continuous(name = y_axis_title) +
