@@ -228,6 +228,22 @@ for (sample_size in sim_params$sample_sizes) {
       
       num_tp_expect__in_basis[[as.character(sample_size)]][rep] <- sum(sig_effects_basis >= target_effect_size__from_basis) * (1-sim_params$alpha_fdr) # expect 5% of sig are FP (probably conservative with these larger-than-median effects)
         
+    ### "Mean" Case: we're more optimistic and planning for the average effect size reported, even if it's biased by selection of significant effects
+    } else if (sim_params$target_effect_type__from_basis == "mean") {
+      
+      if (sum(this_sig_mask) == 1) { # if only 1, choose that one
+        target_effect_size__from_basis <- sig_effects_basis
+      } else {
+        target_effect_size__from_basis <- mean(sig_effects_basis, na.rm = TRUE)
+      }
+
+      n_pos_above_target_effect_type__basis[[as.character(sample_size)]][rep] <- sum(sig_effects_basis >= target_effect_size__from_basis)
+      
+      num_tp_expect__from_basis[[as.character(sample_size)]][rep] <- sum(sig_effects_basis >= target_effect_size__from_basis) * sim_params$targeted_power # conservative estimate when planning for target power to detect this mean effect size
+      num_fp_expect__from_basis[[as.character(sample_size)]][rep] <- (sim_params$alpha_fdr/(1-sim_params$alpha_fdr)) * num_tp_expect__from_basis[[as.character(sample_size)]][rep] # 5 fp for every 95 tp
+      
+      num_tp_expect__in_basis[[as.character(sample_size)]][rep] <- sum(sig_effects_basis >= target_effect_size__from_basis) * (1-sim_params$alpha_fdr) # expect 5% of sig are FP (probably conservative with these larger-than-mean effects)
+    
     ### "Max" Case: we're really optimistic and planning for the highest effect size reported (e.g., peak activation)
     } else if (sim_params$target_effect_type__from_basis == "max") {
       target_effect_size__from_basis <- max(sig_effects_basis, na.rm = TRUE)
@@ -258,11 +274,20 @@ for (sample_size in sim_params$sample_sizes) {
       # using mean means there's no true effect for comparison, so we'll pick the closest mean idx of ground truth>0 since to stand in for the fact that there is always a true effect for ground truth>0
       target_effect_idx__basis[[as.character(sample_size)]][rep] <- target_effect_idx__actual_mean
     } else {
-      target_effect_idx__basis[[as.character(sample_size)]][rep] <- which(as.numeric(this_res$effects) == target_effect_size__from_basis)
+      effects_num <- as.numeric(this_res$effects)
+      if (!is.finite(target_effect_size__from_basis) || all(!is.finite(effects_num))) {
+        target_effect_idx__basis[[as.character(sample_size)]][rep] <- NA_integer_
+      } else {
+        target_effect_idx__basis[[as.character(sample_size)]][rep] <- which.min(abs(effects_num - target_effect_size__from_basis))
+      }
     }
     
     # store planned sample size for replication
-    expected_n_to_replicate_basis_effect[[as.character(sample_size)]][rep] <- ceiling(pwr.t.test(power=sim_params$targeted_power, d = target_effect_size__from_basis, sig.level = sim_params$alpha_fdr, type = "one.sample", alternative = "greater")$n)
+    if (sim_params$target_effect_type__from_basis == "same_sample") {
+      expected_n_to_replicate_basis_effect[[as.character(sample_size)]][rep] <- sample_size
+    } else {
+      expected_n_to_replicate_basis_effect[[as.character(sample_size)]][rep] <- ceiling(pwr.t.test(power=sim_params$targeted_power, d = target_effect_size__from_basis, sig.level = sim_params$alpha_fdr, type = "one.sample", alternative = "greater")$n)
+    }
     
   }
 }
