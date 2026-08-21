@@ -15,10 +15,10 @@ use_high_sample_size_only <- FALSE
 
 # /Users/stephanienoble/
 data_dir <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/xMore/Software/scripts/R/myscripts/effect_size/BrainEffeX_utils/inst/meta/'
-results_dir <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/manuscript/figures/plots/crossbrain_effects__spatial_extent_d2/'
+results_dir_master <- '/Users/stephanienoble/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My\ Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/manuscript/figures/plots/crossbrain_effects__spatial_extent_d2/'
 
-# rename results_dir based on motion and pooling
-results_dir <- paste0(results_dir, "pooling.", pooling_type, ".motion.", motion_type, "/")
+# name results_dir based on motion and pooling
+results_dir <- paste0(results_dir_master, "pooling.", pooling_type, ".motion.", motion_type, "/")
 if (!dir.exists(results_dir)) {
   dir.create(results_dir, recursive = TRUE)
 }
@@ -936,7 +936,7 @@ model_params_master_merge <- model_params_master_reg
 model_params_master_merge$`task activation` <- model_params_master_threshold$`task activation`
 model_params_master_merge$`task connectivity` <- model_params_master_threshold$`task connectivity`
 
-results_dir__merge <- paste0(results_dir, "merged/")
+results_dir__merge <- paste0(results_dir_master, "pooling.", pooling_type, ".motion.regression_threshold_merge/")
 if (!dir.exists(results_dir__merge)) {
   dir.create(results_dir__merge, recursive = TRUE)
 }
