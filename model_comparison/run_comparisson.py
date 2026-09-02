@@ -14,10 +14,10 @@ from dataset_sampling import empirical_sample
 # Change this to change model
 true_dist = true_normal_dist
 
-# Code 
+# Code  
 mean_divergence = 0
-for _ in N_MAJOR_REPS:
-    
+for _ in range(N_MAJOR_REPS):
+   
     fitted_dist = empirical_sample(
         true_dist,
         VARIABLE_NUMBER,
