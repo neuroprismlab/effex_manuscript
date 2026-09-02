@@ -23,107 +23,107 @@
 # ------------- MAIN -------------------------
 
 estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, save_plots = TRUE) {
-
-## Setup
   
-# libraries
-library(dplyr) # TODO: don't think we need to re-import here etc
-library(ggplot2)
-library(ggrepel)
-library(lme4)
-library(pwr) # for sample size calculations
-library(tidyr)
-library(RColorBrewer)
-library(metafor)
-library(patchwork)
-library(bayesmeta) # Bayes regression one
+  ## Setup
   
-# set add'l params
-n_large_threshold <- 900
-cats <- c("psychological", "physical", "task activation", "task connectivity")
-cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
-cat_colors[c(1,2)] <- cat_colors[c(2,1)]
-names(cat_colors) <- cats
-n_pts <- 10000
-use_bayesian_fit <- TRUE
-
-# Centralize plotting and export sizes/appearance in one place.
-plot_params <- list(
-  estimate_fits = list(
-    base_width = 5,
-    base_height = 4
-  ),
-  density = list(
-    do_horizontal_panels = TRUE,
-    xlim_annotate = c(-0.2, 0.2),
-    xbreaks = c(-2, 1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2),
-    axis_text_size = 20,
-    axis_title_size = 20,
-    base_width = 4.2,
-    base_height = 3.5
-  ),
-  power = list(
-    do_horizontal_panels = TRUE,
-    base_width = 4.2,
-    single_col_width = 4.5,
-    base_height = 3.5,
-    axis_text_size = 20,
-    axis_title_size = 20
+  # libraries
+  library(dplyr) # TODO: don't think we need to re-import here etc
+  library(ggplot2)
+  library(ggrepel)
+  library(lme4)
+  library(pwr) # for sample size calculations
+  library(tidyr)
+  library(RColorBrewer)
+  library(metafor)
+  library(patchwork)
+  library(bayesmeta) # Bayes regression one
+  
+  # set add'l params
+  n_large_threshold <- 900
+  cats <- c("psychological", "physical", "task activation", "task connectivity")
+  cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
+  cat_colors[c(1,2)] <- cat_colors[c(2,1)]
+  names(cat_colors) <- cats
+  n_pts <- 10000
+  use_bayesian_fit <- TRUE
+  
+  # Centralize plotting and export sizes/appearance in one place.
+  plot_params <- list(
+    estimate_fits = list(
+      base_width = 5,
+      base_height = 4
+    ),
+    density = list(
+      do_horizontal_panels = TRUE,
+      xlim_annotate = c(-0.2, 0.2),
+      xbreaks = c(-2, 1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2),
+      axis_text_size = 20,
+      axis_title_size = 20,
+      base_width = 4.2,
+      base_height = 3.5
+    ),
+    power = list(
+      do_horizontal_panels = TRUE,
+      base_width = 4.2,
+      single_col_width = 4.5,
+      base_height = 3.5,
+      axis_text_size = 20,
+      axis_title_size = 20
+    )
   )
-)
-
-# make output directory if it doesn't exist
-if (!dir.exists(fn_basedir)) {
-  print(paste0('Creating output directory: ', fn_basedir))
-  dir.create(fn_basedir, recursive = TRUE)
-}
-
-## Get summaries
-# - also making separate data frame with conservative estimates (facilitates reuse of later functions on cons est)
-
-# 1. using individual studies
-summary_data <- get_study_summaries(v_data$data, v_data$study, estimate, combo_name)
-summary_data_cons <- summary_data
-summary_data_cons$mean <- summary_data_cons$mean_cons
-summary_data_cons$var_xv <- summary_data_cons$var_xv_cons
-summary_data_cons$var_xv__emp <- summary_data_cons$var_xv__emp_cons
-
-# 2. using meta-analysis results
-
-## Extract additional info from meta-analysis before can summarize
-
-# first, for meta, category is inexplicably group_level - rename 
-v_data$meta_category$study$category <- v_data$meta_category$study$group_level
-
-# Assign all relevant datasets, n's, and study names to meta_category$study
-v_data$meta_category$study$dataset <- vector("list", length(v_data$meta_category$study$name))
-v_data$meta_category$study$each_n <- vector("list", length(v_data$meta_category$study$name))
-v_data$meta_category$study$n <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
-v_data$meta_category$study$n1 <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
-v_data$meta_category$study$n2 <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
-v_data$meta_category$study$included_study_names <- vector("list", length(v_data$meta_category$study$name))
-v_data$meta_category$study$n_studies <- integer(length(v_data$meta_category$study$name))
-
-# For each meta-analysis, get all studies included, their associated datasets, and sample sizes
-for (i in seq_along(v_data$meta_category$study$name)) {
   
-  # get category and ref from meta_name
-  meta_name <- v_data$meta_category$study$name[i]
-  parts <- strsplit(meta_name, "_reference_")[[1]]
-  meta_cat <- parts[1]
-  meta_ref <- parts[2]
+  # make output directory if it doesn't exist
+  if (!dir.exists(fn_basedir)) {
+    print(paste0('Creating output directory: ', fn_basedir))
+    dir.create(fn_basedir, recursive = TRUE)
+  }
   
-  matches <- which(v_data$study$category == meta_cat & v_data$study$ref == meta_ref)
+  ## Get summaries
+  # - also making separate data frame with conservative estimates (facilitates reuse of later functions on cons est)
   
-  included_study_names <- v_data$study$name[matches]
-  v_data$meta_category$study$included_study_names[[i]] <- included_study_names
-  v_data$meta_category$study$dataset[[i]] <- v_data$study$dataset[matches]
-  v_data$meta_category$study$overarching_category[[i]] <- unique(summary_data$overarching_category[matches])
-  v_data$meta_category$study$each_n[[i]] <- summary_data$n[match(included_study_names, summary_data$name)]
-  v_data$meta_category$study$n_studies[[i]] <- length(included_study_names)
+  # 1. using individual studies
+  summary_data <- get_study_summaries(v_data$data, v_data$study, estimate, combo_name)
+  summary_data_cons <- summary_data
+  summary_data_cons$mean <- summary_data_cons$mean_cons
+  summary_data_cons$var_xv <- summary_data_cons$var_xv_cons
+  summary_data_cons$var_xv__emp <- summary_data_cons$var_xv__emp_cons
   
-  v_data$meta_category$study$n <- vector("list", length(v_data$meta_category$study$name))
-  # for (i in seq_along(v_data$meta_category$study$name)) {
+  # 2. using meta-analysis results
+  
+  ## Extract additional info from meta-analysis before can summarize
+  
+  # first, for meta, category is inexplicably group_level - rename 
+  v_data$meta_category$study$category <- v_data$meta_category$study$group_level
+  
+  # Assign all relevant datasets, n's, and study names to meta_category$study
+  v_data$meta_category$study$dataset <- vector("list", length(v_data$meta_category$study$name))
+  v_data$meta_category$study$each_n <- vector("list", length(v_data$meta_category$study$name))
+  v_data$meta_category$study$n <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
+  v_data$meta_category$study$n1 <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
+  v_data$meta_category$study$n2 <- vector("list", length(v_data$meta_category$study$name)) # number of unique subjects
+  v_data$meta_category$study$included_study_names <- vector("list", length(v_data$meta_category$study$name))
+  v_data$meta_category$study$n_studies <- integer(length(v_data$meta_category$study$name))
+  
+  # For each meta-analysis, get all studies included, their associated datasets, and sample sizes
+  for (i in seq_along(v_data$meta_category$study$name)) {
+    
+    # get category and ref from meta_name
+    meta_name <- v_data$meta_category$study$name[i]
+    parts <- strsplit(meta_name, "_reference_")[[1]]
+    meta_cat <- parts[1]
+    meta_ref <- parts[2]
+    
+    matches <- which(v_data$study$category == meta_cat & v_data$study$ref == meta_ref)
+    
+    included_study_names <- v_data$study$name[matches]
+    v_data$meta_category$study$included_study_names[[i]] <- included_study_names
+    v_data$meta_category$study$dataset[[i]] <- v_data$study$dataset[matches]
+    v_data$meta_category$study$overarching_category[[i]] <- unique(summary_data$overarching_category[matches])
+    v_data$meta_category$study$each_n[[i]] <- summary_data$n[match(included_study_names, summary_data$name)]
+    v_data$meta_category$study$n_studies[[i]] <- length(included_study_names)
+    
+    v_data$meta_category$study$n <- vector("list", length(v_data$meta_category$study$name))
+    # for (i in seq_along(v_data$meta_category$study$name)) {
     meta_datasets <- v_data$meta_category$study$dataset[[i]]
     unique_datasets <- unique(meta_datasets)
     unique_n <- 0
@@ -157,107 +157,107 @@ for (i in seq_along(v_data$meta_category$study$name)) {
       v_data$meta_category$study$orig_stat_type[[i]] <- names(which.max(stat_type_counts))
     }
     
-  # }
-}
-names(v_data$meta_category$study$dataset) <- v_data$meta_category$study$name
-names(v_data$meta_category$study$each_n) <- v_data$meta_category$study$name
-names(v_data$meta_category$study$included_study_names) <- v_data$meta_category$study$name
-names(v_data$meta_category$study$n_studies) <- v_data$meta_category$study$name
-
-# summary - meta
-summary_data__meta <- get_study_summaries(v_data$meta_category$data, v_data$meta_category$study,estimate, combo_name)
-summary_data_cons__meta <- summary_data__meta
-summary_data_cons__meta$mean <- summary_data_cons__meta$mean_cons
-summary_data_cons__meta$var_xv <- summary_data_cons__meta$var_xv_cons
-summary_data_cons__meta$var_xv__emp <- summary_data_cons__meta$var_xv__emp_cons
-
-## Extra info
-
-# get total unique subjects across all studies
-all_datasets <- unique(summary_data$dataset)
-all_datasets <- all_datasets[all_datasets != "hcp_voxel"] # remove hcp_voxel, which is a subset of hcp_shen_268
-all_ns <- numeric(length(all_datasets))
-for (j in seq_along(all_datasets)) {
-  ds <- all_datasets[j]
-  ns <- summary_data$n[summary_data$dataset == ds]
-  if (length(ns) > 0) {
-    all_ns[j] <- max(ns, na.rm = TRUE)
-  } else {
-    all_ns[j] <- 0
+    # }
   }
-}
-total_n <- sum(all_ns, na.rm = TRUE)
-
-
-## Estimate & Plot
+  names(v_data$meta_category$study$dataset) <- v_data$meta_category$study$name
+  names(v_data$meta_category$study$each_n) <- v_data$meta_category$study$name
+  names(v_data$meta_category$study$included_study_names) <- v_data$meta_category$study$name
+  names(v_data$meta_category$study$n_studies) <- v_data$meta_category$study$name
   
-plot_extra <- FALSE # TODO - tmp
-
-# Estimate effect sizes & plot param estimation plot
-# - mass univariate (corrected cross-brain distribution)
-res_fn_basename <- paste0(fn_basedir,'point')
-# res_fn <- paste0(res_fn_basename,'_res.Rdata')
-# if (file.exists(res_fn)) { # first try to load file if exists
-#   load(res_fn)
-# } else {
+  # summary - meta
+  summary_data__meta <- get_study_summaries(v_data$meta_category$data, v_data$meta_category$study,estimate, combo_name)
+  summary_data_cons__meta <- summary_data__meta
+  summary_data_cons__meta$mean <- summary_data_cons__meta$mean_cons
+  summary_data_cons__meta$var_xv <- summary_data_cons__meta$var_xv_cons
+  summary_data_cons__meta$var_xv__emp <- summary_data_cons__meta$var_xv__emp_cons
+  
+  ## Extra info
+  
+  # get total unique subjects across all studies
+  all_datasets <- unique(summary_data$dataset)
+  all_datasets <- all_datasets[all_datasets != "hcp_voxel"] # remove hcp_voxel, which is a subset of hcp_shen_268
+  all_ns <- numeric(length(all_datasets))
+  for (j in seq_along(all_datasets)) {
+    ds <- all_datasets[j]
+    ns <- summary_data$n[summary_data$dataset == ds]
+    if (length(ns) > 0) {
+      all_ns[j] <- max(ns, na.rm = TRUE)
+    } else {
+      all_ns[j] <- 0
+    }
+  }
+  total_n <- sum(all_ns, na.rm = TRUE)
+  
+  
+  ## Estimate & Plot
+  
+  plot_extra <- FALSE # TODO - tmp
+  
+  # Estimate effect sizes & plot param estimation plot
+  # - mass univariate (corrected cross-brain distribution)
+  res_fn_basename <- paste0(fn_basedir,'point')
+  # res_fn <- paste0(res_fn_basename,'_res.Rdata')
+  # if (file.exists(res_fn)) { # first try to load file if exists
+  #   load(res_fn)
+  # } else { ## df, df_meta, n_pts, main_title, fn, plot_type = "crossvariable", plot_params = NULL
   all_res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Cross-Brain Effects", res_fn_basename, plot_params = plot_params)
   #res is only est lwr upr
   res <- all_res[c("est", "lwr", "upr")]
   phi2 <- all_res[c("phi2_est", "phi2_lwr", "phi2_upr")]
-# }
-# - multivariate
-res_fn_mv_basename <- paste0(fn_basedir,'mv_est')
-# res_fn_mv <- paste0(res_fn_mv_basename,'_res.Rdata')
-# if (file.exists(res_fn_mv)) {
-#   res_mv <- get(load(res_fn_mv))
-# } else {
-  res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Multivariate Effects", res_fn_mv_basename, plot_type = "mv", plot_params = plot_params)
-# }
-
-# Make density plots
-sigmas_master <- plot_densities(res, res_mv,  n_pts, fn_basedir, cat_colors, save_plots, plot_params = plot_params)
-
-# Power plots
-do_other_power_plots <- TRUE # TODO: temporary
-if (do_other_power_plots) {
-  # - mass univariate
-  results_uv <- get_average_power(sigmas_master, do_mv = FALSE)
-  avg_power <- results_uv$avg_power
-  proportion_detectable <- results_uv$proportion_detectable
-  
-  plot_average_power(avg_power, do_mv = FALSE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
-  plot_proportion_detectable(proportion_detectable, do_mv = FALSE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
-  
+  # }
   # - multivariate
-  results_uv <- get_average_power(sigmas_master, res_mv = res_mv, do_mv = TRUE)
-  avg_power_mv <- results_uv$avg_power
-  proportion_detectable_mv <- results_uv$proportion_detectable
+  res_fn_mv_basename <- paste0(fn_basedir,'mv_est')
+  # res_fn_mv <- paste0(res_fn_mv_basename,'_res.Rdata')
+  # if (file.exists(res_fn_mv)) {
+  #   res_mv <- get(load(res_fn_mv))
+  # } else {
+  res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Multivariate Effects", res_fn_mv_basename, plot_type = "mv", plot_params = plot_params)
+  # }
   
-  plot_average_power(avg_power_mv, do_mv = TRUE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
-  plot_proportion_detectable(proportion_detectable_mv, do_mv = TRUE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
-}
-
-# Power mismatch plots
-plot_proportion_difference(sigmas_master, phi2, cat_colors, fn_basedir)
-
-# # Req'd n plots:
-# # - mass univariate
-# required_n_df <- make_required_n_df(n_pts, sigmas_master, do_mv = FALSE)
-# plot_required_n_panel(required_n_df, do_mv = FALSE, cat_colors,fn_basedir)
-# 
-# # - multivariate
-# required_n_df_mv <- make_required_n_df(n_pts, sigmas_master, res_mv = res_mv, do_mv = TRUE)
-# plot_required_n_panel(required_n_df_mv, do_mv = TRUE, cat_colors,fn_basedir)
-
-
-
-if (plot_extra) {
-  # conservative and large n
-  res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'), plot_params = plot_params)
-  res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'), plot_params = plot_params)
-}
-
-
+  # Make density plots
+  sigmas_master <- plot_densities(res, res_mv,  n_pts, fn_basedir, cat_colors, save_plots, plot_params = plot_params)
+  
+  # Power plots
+  do_other_power_plots <- TRUE # TODO: temporary
+  if (do_other_power_plots) {
+    # - mass univariate
+    results_uv <- get_average_power(sigmas_master, do_mv = FALSE)
+    avg_power <- results_uv$avg_power
+    proportion_detectable <- results_uv$proportion_detectable
+    
+    plot_average_power(avg_power, do_mv = FALSE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+    plot_proportion_detectable(proportion_detectable, do_mv = FALSE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+    
+    # - multivariate
+    results_uv <- get_average_power(sigmas_master, res_mv = res_mv, do_mv = TRUE)
+    avg_power_mv <- results_uv$avg_power
+    proportion_detectable_mv <- results_uv$proportion_detectable
+    
+    plot_average_power(avg_power_mv, do_mv = TRUE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+    plot_proportion_detectable(proportion_detectable_mv, do_mv = TRUE, cat_colors,fn_basedir, save_plots = save_plots, plot_params = plot_params)
+  }
+  
+  # Power mismatch plots
+  plot_proportion_difference(sigmas_master, phi2, cat_colors, fn_basedir)
+  
+  # # Req'd n plots:
+  # # - mass univariate
+  # required_n_df <- make_required_n_df(n_pts, sigmas_master, do_mv = FALSE)
+  # plot_required_n_panel(required_n_df, do_mv = FALSE, cat_colors,fn_basedir)
+  # 
+  # # - multivariate
+  # required_n_df_mv <- make_required_n_df(n_pts, sigmas_master, res_mv = res_mv, do_mv = TRUE)
+  # plot_required_n_panel(required_n_df_mv, do_mv = TRUE, cat_colors,fn_basedir)
+  
+  
+  
+  if (plot_extra) {
+    # conservative and large n
+    res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'), plot_params = plot_params)
+    res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'), plot_params = plot_params)
+  }
+  
+  
 } # function
 
 
@@ -456,7 +456,7 @@ get_study_summaries <- function(data, study, estimate, combo_name) {
     # if (sum(mask) < length(data[[i]][[combo_name]][[estimate]])) {
     #   sorted_indices <- which(mask == 1)[order(data[[i]][[combo_name]][[estimate]][mask])]
     # } else {
-      sorted_indices <- order(data[[i]][[combo_name]][[estimate]])
+    sorted_indices <- order(data[[i]][[combo_name]][[estimate]])
     # }
     
     # sort data from smallest to largest effect size
@@ -517,7 +517,7 @@ get_study_summaries <- function(data, study, estimate, combo_name) {
       }
       d_k[i] <- 4
     } else if (study$orig_stat_type[[i]] == "t" || study$orig_stat_type[[i]] == "r") {
-    # if (!is.null(data[[i]][[combo_name]]$n)) {
+      # if (!is.null(data[[i]][[combo_name]]$n)) {
       d_n[i] <- data[[i]][[combo_name]]$n
       if (estimate == "d") {
         if (study$orig_stat_type[[i]] == "r") { # treat as 2-sample t-test
@@ -613,111 +613,244 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
   
   # sort by sample size
   df <- df[order(df$n/df$k, decreasing = FALSE), ]
-
+  
   # set ndivk_max_plt to the maximum observed sample size in df (fallback to large default if unavailable)
   ndivk_min_plt <- 10
   ndivk_max_plt <- max(df$n, na.rm = TRUE) + ndivk_max_extra_padding
   
-  for (add_meta in c(TRUE, FALSE)) {
-    
-    if (add_meta) {
-      meta_str <- '__meta'
-      alpha <- 0.15 # make non-meta points more transparent
+  # interpolate predictions for all n (use plotted max n only)
+  # NOTE: this used to be recomputed inside the add_meta loop below (identically,
+  # every time) -- moved up here since it doesn't depend on add_meta.
+  ndivk__seq <- seq(ndivk_min_plt, ndivk_max_plt, length.out = n_pts)
+  
+  # set up for each overarching category
+  unique_cats <- unique(df$overarching_category)
+  # # if 'task activation' exists in unique_cats, make it come right after 'task connectivity'
+  # if ("task activation" %in% unique_cats) {
+  #   unique_cats <- c(setdiff(unique_cats, "task connectivity"), "task connectivity")
+  #   unique_cats <- c(setdiff(unique_cats, "task activation"), "task activation")
+  # }
+  
+  # fit meta-analysis nesting studies by dataset and overarching category
+  
+  # setup grouping variables (used by the frequentist rma.mv nesting)
+  df$dataset_nested <- interaction(df$overarching_category, df$dataset, drop = TRUE)
+  
+  use_bayesian_fit <- TRUE  # set TRUE to use bayesmeta::bmr() instead of metafor::rma.mv()
+  # NOTE: bmr() has no equivalent of the category/dataset_nested
+  # nesting -- it pools all heterogeneity into a single tau.
+  # Category is instead entered as a FIXED effect (one-hot
+  # columns in X) below, and each category's coefficient is
+  # read directly off the posterior summary (no ranef()/BLUPs,
+  # since bmr() objects have no nested random-effects structure
+  # for that method to operate on). Decided against partial
+  # pooling across category for the Bayesian estimates given
+  # ample sample size; the rma.mv() path below is kept as an
+  # alternative/sensitivity estimation procedure that does use
+  # partial pooling.
+  
+  # ------------------------------------------------------------------
+  # Fit the model ONCE.
+  # IMPORTANT: this block (and the extraction block below it) used to sit
+  # inside the `for (add_meta in c(TRUE, FALSE))` plotting loop further down,
+  # which meant bmr()/rma.mv() -- and the slow rposterior() draws -- were
+  # silently run TWICE per call, since add_meta only controls plot cosmetics
+  # (point transparency, whether meta-analysis points get overlaid), not the
+  # fitted model. Moving the fit out here halves the runtime on its own.
+  # ------------------------------------------------------------------
+  
+  if (plot_type == "mv") {
+    if (use_bayesian_fit) {
+      keep <- !is.na(df$mv) & !is.na(df$vi_mv)
+      df_keep <- droplevels(df[keep, ])
+      X_bayes <- model.matrix(~ 0 + overarching_category, data = df_keep)
+      colnames(X_bayes) <- levels(df_keep$overarching_category)
+      print("  Fitting bmr() [mv, intercept-only]...")
+      t0 <- Sys.time()
+      fit_all <- bmr(y = df$mv[keep],
+                     sigma = sqrt(df$vi_mv[keep]),
+                     X = X_bayes,
+                     labels = df$name[keep],
+                     tau.prior = "uniform")
+      print(paste0("    ...done in ", round(difftime(Sys.time(), t0, units = "secs"), 1), " sec"))
     } else {
-      meta_str <- ''
-      alpha <- 0.7
+      fit_all <- rma.mv(yi = mv, 
+                        V = vi_mv,  # approximate variance from CI
+                        random = ~ 1 | overarching_category/dataset_nested,
+                        data = df,
+                        method = "REML")
     }
     
-    # Fit params & plot fits
+  } else {
+    # NOTE: y_var/v_var below used to be overwritten with the actual numeric
+    # data vectors here, clobbering the column-name STRING that y_var holds
+    # above (used in aes_string() for plotting). That "worked" by accident
+    # for the main df layer (same row count as the data), but broke the
+    # df_meta overlay layer (different row count) with a check_aesthetics
+    # length-mismatch error. Using separate y_vals/v_vals for the fit data
+    # keeps y_var as the plotting column name throughout.
+    if (use_var_xv__emp) {
+      y_vals <- df$var_xv__emp
+      v_vals <- df$vi_var_xv__emp
+    } else {
+      y_vals <- df$var_xv
+      v_vals <- df$vi_var_xv
+    }
     
-    fitlines_str <- '__fits'
-    
-    # interpolate predictions for all n (use plotted max n only)
-    ndivk__seq <- seq(ndivk_min_plt, ndivk_max_plt, length.out = n_pts)
-    
-    # set up for each overarching category
-    unique_cats <- unique(df$overarching_category)
-    # # if 'task activation' exists in unique_cats, make it come right after 'task connectivity'
-    # if ("task activation" %in% unique_cats) {
-    #   unique_cats <- c(setdiff(unique_cats, "task connectivity"), "task connectivity")
-    #   unique_cats <- c(setdiff(unique_cats, "task activation"), "task activation")
-    # }
-    predicted_y <- vector("list", length(unique_cats))
-    names(predicted_y) <- unique_cats
-      
-    # fit meta-analysis nesting studies by dataset and overarching category
-    
-    # setup grouping variables
-    df$dataset_nested <- interaction(df$overarching_category, df$dataset, drop = TRUE)
-    
-        use_bayesian_fit <- FALSE  # set TRUE to use bayesmeta::bmr() instead of metafor::rma.mv()
-                                # NOTE: bmr() has no equivalent of the category/dataset_nested
-                                # nesting — it pools all heterogeneity into a single tau.
-
-    if (plot_type == "mv") {
-      if (use_bayesian_fit) {
-        keep <- !is.na(df$mv) & !is.na(df$vi_mv)
-        X_bayes <- matrix(1, nrow = sum(keep), ncol = 1,
-                           dimnames = list(NULL, "intercept"))
-        fit_all <- bmr(y = df$mv[keep],
-                        sigma = sqrt(df$vi_mv[keep]),
-                        X = X_bayes,
-                        labels = df$name[keep],
-                        tau.prior = "uniform")
+    if (use_bayesian_fit) {
+      keep <- !is.na(y_vals) & !is.na(v_vals) & !is.na(df$k) & !is.na(df$n)
+      df_keep <- droplevels(df[keep, ])
+      X_cat <- model.matrix(~ 0 + overarching_category, data = df_keep)
+      colnames(X_cat) <- levels(df_keep$overarching_category)
+      X_bayes <- cbind(X_cat, "invn" = (df$k / df$n)[keep])  # slope shared across categories
+      print("  Fitting bmr() [crossvariable]...")
+      t0 <- Sys.time()
+      fit_all <- bmr(y = y_vals[keep], sigma = sqrt(v_vals[keep]),
+                     X = X_bayes,
+                     labels = df$name[keep],
+                     tau.prior = "uniform")
+      print(paste0("    ...done in ", round(difftime(Sys.time(), t0, units = "secs"), 1), " sec"))
+    } else {
+      if (use_var_xv__emp) {
+        fit_all <- rma.mv(yi = var_xv__emp, 
+                          V = vi_var_xv__emp,
+                          mods = ~ I(k/n),
+                          random = ~ 1 | overarching_category/dataset_nested,
+                          data = df,
+                          method = "REML")
       } else {
-        fit_all <- rma.mv(yi = mv, 
-                          V = vi_mv,  # approximate variance from CI
+        fit_all <- rma.mv(yi = var_xv, 
+                          V = vi_var_xv,
+                          mods = ~ I(k/n),
                           random = ~ 1 | overarching_category/dataset_nested,
                           data = df,
                           method = "REML")
       }
-
-    } else {
-      if (use_var_xv__emp) {
-        y_var <- df$var_xv__emp
-        v_var <- df$vi_var_xv__emp
-      } else {
-        y_var <- df$var_xv
-        v_var <- df$vi_var_xv
-      }
-
-      if (use_bayesian_fit) {
-        keep <- !is.na(y_var) & !is.na(v_var) & !is.na(df$k) & !is.na(df$n)
-        X_bayes <- cbind("intercept" = 1, "invn" = (df$k / df$n)[keep])
-        fit_all <- bmr(y = y_var[keep],
-                        sigma = sqrt(v_var[keep]),
-                        X = X_bayes,
-                        labels = df$name[keep],
-                        tau.prior = "uniform")
-      } else {
-        if (use_var_xv__emp) {
-          fit_all <- rma.mv(yi = var_xv__emp, 
-                            V = vi_var_xv__emp,
-                            mods = ~ I(k/n),
-                            random = ~ 1 | overarching_category/dataset_nested,
-                            data = df,
-                            method = "REML")
-        } else {
-          fit_all <- rma.mv(yi = var_xv, 
-                            V = vi_var_xv,
-                            mods = ~ I(k/n),
-                            random = ~ 1 | overarching_category/dataset_nested,
-                            data = df,
-                            method = "REML")
+    }
+  }
+  
+  # ------------------------------------------------------------------
+  # Extract estimates and credible/confidence intervals (also only once).
+  # ------------------------------------------------------------------
+  res <- vector("list", length(unique_cats))
+  names(res) <- unique_cats
+  predicted_y <- vector("list", length(unique_cats))
+  names(predicted_y) <- unique_cats
+  
+  if (use_bayesian_fit) {
+    
+    # bmr(): category is a fixed effect in X (one column per category), so
+    # each category's estimate is read straight off the posterior summary.
+    # NOTE: confirm these row labels match your installed bayesmeta/bmr
+    # version once via: rownames(fit_all$summary); colnames(fit_all$summary)
+    post_summary <- fit_all$summary
+    est_row <- "mean"
+    lwr_row <- "95% lower"
+    upr_row <- "95% upper"
+    
+    if (plot_type == "mv") {
+      
+      for (cat in unique_cats) {
+        cat_col <- as.character(cat)
+        
+        # NOTE: unique_cats is derived from the full df, but X_bayes (and
+        # hence post_summary's columns) only includes categories that had
+        # at least one non-missing row for THIS estimate/plot_type -- a
+        # category can legitimately be absent here even though it exists
+        # elsewhere in the data. Leave res[[cat]]/predicted_y[[cat]] as NULL
+        # (their vector("list",...) default) rather than filling with NA --
+        # do.call(rbind, res) silently drops NULL entries, so downstream
+        # functions that loop over rownames(res) never see this category
+        # at all, instead of tripping over NAs several functions deep.
+        if (!cat_col %in% colnames(post_summary)) {
+          warning(paste0("Category '", cat_col, "' has no usable data for this fit (plot_type = '",
+                         plot_type, "') -- excluding from results."))
+          next
         }
+        
+        cat_est <- post_summary[est_row, cat_col]
+        cat_lwr <- post_summary[lwr_row, cat_col]
+        cat_upr <- post_summary[upr_row, cat_col]
+        
+        res[[cat]] <- data.frame(
+          est = cat_est,
+          lwr = cat_lwr,
+          upr = cat_upr,
+          row.names = paste0(cat, "_intercept")
+        )
+        
+        # Constant line for mv (intercept-only model)
+        predicted_y[[cat]] <- cbind(
+          fit = rep(cat_est, length(ndivk__seq)),
+          lwr = rep(cat_lwr, length(ndivk__seq)),
+          upr = rep(cat_upr, length(ndivk__seq))
+        )
+      }
+      
+    } else {
+      
+      slope_est <- post_summary[est_row, "invn"]
+      slope_lwr <- post_summary[lwr_row, "invn"]
+      slope_upr <- post_summary[upr_row, "invn"]
+      
+      # NOTE: rposterior() is documented as slow -- it samples via numerical
+      # inversion, and by default (tau.sample=TRUE) also draws tau for every
+      # sample, requiring root-finding per draw. Time a small n_draws first
+      # (e.g. 50) before scaling up. If you don't need tau draws themselves,
+      # tau.sample=FALSE is much faster but changes exactly what uncertainty
+      # gets captured -- check bmr()'s help before relying on it as final.
+      n_draws <- 500
+      print(paste0("  Drawing ", n_draws, " posterior samples via rposterior()..."))
+      t0 <- Sys.time()
+      draws <- fit_all$rposterior(n_draws)
+      print(paste0("    ...done in ", round(difftime(Sys.time(), t0, units = "secs"), 1), " sec"))
+      # NOTE: inspect once with str(draws) / colnames(draws) to confirm
+      # it returns a draw per X column (+ tau) under these same names.
+      
+      for (cat in unique_cats) {
+        cat_col <- as.character(cat)
+        
+        # NOTE: see the corresponding guard in the mv branch above -- a
+        # category present in the full df can legitimately be absent from
+        # this fit if it had no non-missing rows for this estimate. Leave
+        # res[[cat]]/predicted_y[[cat]] as NULL so do.call(rbind, res) drops
+        # it and downstream functions never see this category at all.
+        if (!cat_col %in% colnames(post_summary)) {
+          warning(paste0("Category '", cat_col, "' has no usable data for this fit (plot_type = '",
+                         plot_type, "') -- excluding from results."))
+          next
+        }
+        
+        cat_est <- post_summary[est_row, cat_col]
+        cat_lwr <- post_summary[lwr_row, cat_col]
+        cat_upr <- post_summary[upr_row, cat_col]
+        
+        res[[cat]] <- data.frame(
+          est = cat_est,
+          lwr = cat_lwr,
+          upr = cat_upr,
+          phi2_est = slope_est,
+          phi2_lwr = slope_lwr,
+          phi2_upr = slope_upr,
+          row.names = paste0(cat, "_intercept")
+        )
+        
+        pred_draws <- outer(draws[, cat_col], rep(1, length(ndivk__seq))) +
+          outer(draws[, "invn"], 1 / ndivk__seq)
+        predicted_y[[cat]] <- cbind(
+          fit = colMeans(pred_draws),
+          lwr = apply(pred_draws, 2, quantile, probs = 0.025),
+          upr = apply(pred_draws, 2, quantile, probs = 0.975)
+        )
       }
     }
     
-    # Extract estimates and confidence intervals from meta-analysis
-    # Extract category-specific random effects (BLUPs)
+  } else {
+    
+    # Frequentist (rma.mv) path -- category-specific intercepts via BLUPs,
+    # kept as an alternative/sensitivity estimation procedure.
     random_effects <- ranef(fit_all)
     category_effects <- random_effects$overarching_category
-    
-    # Create results with category-specific intercepts
-    res <- vector("list", length(unique_cats))
-    names(res) <- unique_cats
-    predicted_y <- vector("list", length(unique_cats))
-    names(predicted_y) <- unique_cats
     
     for (cat in unique_cats) {
       # Get category-specific intercept (overall + random effect)
@@ -774,30 +907,36 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
         predicted_y[[cat]] <- cbind(fit = preds, lwr = lwr, upr = upr)
       }
     }
+  }
+  
+  # Combine results into single dataframe
+  res <- do.call(rbind, res)
+  
+  # ------------------------------------------------------------------
+  # Now just plot. The add_meta loop only affects plot cosmetics (point
+  # alpha, whether meta-analysis points/labels get overlaid, output
+  # filename) -- it no longer touches the model fit above.
+  # ------------------------------------------------------------------
+  
+  df$x_plot <- df$n/df$k
+  x_label <- "n/k (log scale)"
+  # use ndivk_max_plt (prediction max) to set the upper x limit
+  x_limits <- c(ndivk_min_plt, ndivk_max_plt)
+  
+  cats <- levels(df$overarching_category)
+  color_map <- setNames(RColorBrewer::brewer.pal(length(cats), "Set1"), cats)
+  
+  for (add_meta in c(TRUE, FALSE)) {
     
-    # Combine results into single dataframe
-    res <- do.call(rbind, res)
+    if (add_meta) {
+      meta_str <- '__meta'
+      alpha <- 0.15 # make non-meta points more transparent
+    } else {
+      meta_str <- ''
+      alpha <- 0.7
+    }
     
-    # plot
-    df$x_plot <- df$n/df$k
-    # df_meta$x_plot <- df_meta$n
-    x_label <- "n/k (log scale)"
-    # use ndivk_max_plt (prediction max) to set the upper x limit
-    x_limits <- c(ndivk_min_plt, ndivk_max_plt)
-    # OLD: for plot_with_inv_sqrt_n :
-    # df$x_plot <- 1/sqrt(df$n)
-    # df_meta$x_plot <- 1/sqrt(df_meta$n)
-    # x_label <- "1 / sqrt(n)"
-    # # ndivk_max_plt is always defined; compute smallest positive n step from ndivk_max_plt and n_pts
-    # if (n_pts > 1) {
-    #   min_pos_n <- ndivk_max_plt / (n_pts - 1)
-    # } else {
-    #   min_pos_n <- 1
-    # }
-    # x_limits <- c(0, 1 / sqrt(min_pos_n))
-    
-    cats <- levels(df$overarching_category)
-    color_map <- setNames(RColorBrewer::brewer.pal(length(cats), "Set1"), cats)
+    fitlines_str <- '__fits'
     
     p <- ggplot(df, aes_string(x = "x_plot", y = y_var, color = "overarching_category")) +
       geom_point(size = 1.5, alpha = alpha, stroke = 0) +
@@ -829,7 +968,6 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
       if (!is.null(pred_mat) && is.matrix(pred_mat) && all(c("fit","lwr","upr") %in% colnames(pred_mat)) && nrow(pred_mat) == length(ndivk__seq)) {
         pred_df <- data.frame(
           x_plot = ndivk__seq,
-          # x_plot = 1/sqrt(ndivk__seq), # OLD: for plot_with_inv_sqrt_n
           fit = pred_mat[,"fit"],
           lwr = pred_mat[,"lwr"],
           upr = pred_mat[,"upr"],
@@ -876,7 +1014,7 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
 ###########  Make Estimated Density Plots ########### 
 
 plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cat_colors, save_plots = TRUE, plot_params = NULL) {
-
+  
   print('Making density plots')
   cats <- unique(rownames(res))
   # cat_colors <- RColorBrewer::brewer.pal(length(cats), "Set1")
@@ -913,201 +1051,201 @@ plot_densities <- function(res, res_mv,  n_pts, fn_basedir, cat_colors, save_plo
     width <- base_width
     height <- base_height
     
-  
-  # preallocate
-  density_list <- list()
-  if (!do_mv) {
-    sigmas_master <- NULL
-  }
-  
-  for (i in seq_along(cats)) {
-    cat <- cats[i]
     
-    if (do_mv) {
+    # preallocate
+    density_list <- list()
+    if (!do_mv) {
+      sigmas_master <- NULL
+    }
+    
+    for (i in seq_along(cats)) {
+      cat <- cats[i]
       
-      for (name in names(res_mv[cat, ])) {
+      if (do_mv) {
         
-        mu <- res_mv[cat, name]
-        if (!is.na(mu) && mu < 0) {
-          mu <- 0
-        }
-        
-        y <- rep(0, length(d))
-        closest_idx <- which.min(abs(d - mu))
-        y[closest_idx] <- 1
-        
-        density_list[[length(density_list)+1]] <- data.frame(
-          d = d,
-          density = y,
-          category = cat,
-          sigma_type = name,
-          overarching_category = cat
-        )
-      }
-      
-    } else {
-      # vars <- c(res[cat,"lwr"], res[cat,"est"], res[cat,"upr"])
-      # vars <- pmax(vars, 0) # no negative variances
-      # sigmas <- sqrt(vars)
-      # # print(sigmas)
-      # names(sigmas) <- c('lwr','est','upr')
-      # sigmas_master <- rbind(sigmas_master, sigmas)
-      
-      res[res < 0] <- 0 # no negative variances
-      sigmas_master <- sqrt(res)
-      sigmas <- sigmas_master[cat, ]
-      
-      
-      # If not mv, make y as dnorm for each sigma (lwr, est, upr)
-      for (name in names(sigmas)) {
-        
-        s <- sigmas[[name]]
-        
-        if (s > 0) {
-          y <- dnorm(d, mean = 0, sd = s)
-        } else {
-          # point mass at 0 with exponential taper toward the midpoint so it plots nicely
-          # note that these are arbitrary values set so point mass shows up for plots with ymax=~3 - ymax=~8
+        for (name in names(res_mv[cat, ])) {
+          
+          mu <- res_mv[cat, name]
+          if (!is.na(mu) && mu < 0) {
+            mu <- 0
+          }
+          
           y <- rep(0, length(d))
-          midpt <- ceiling(length(d)/2)
-          max_density <- 30
-          n_taper <- 70
-          weights <- exp(seq(log(0.1), log(1), length.out = n_taper))
-          y[(midpt - n_taper/2 + 1):(midpt + n_taper/2)] <- max_density * weights
-          # weights <- exp(seq(log(0.1), log(1), length.out = n_taper))
-          # y[(midpt - n_taper + 1):midpt] <- max_density * weights
-          # y[(midpt + 1):(midpt + n_taper)] <- max_density * rev(weights)
+          closest_idx <- which.min(abs(d - mu))
+          y[closest_idx] <- 1
+          
+          density_list[[length(density_list)+1]] <- data.frame(
+            d = d,
+            density = y,
+            category = cat,
+            sigma_type = name,
+            overarching_category = cat
+          )
         }
         
-        density_list[[length(density_list)+1]] <- data.frame(
-          d = d,
-          density = y,
-          category = cat,
-          sigma_type = name,
-          overarching_category = cat
-        )
+      } else {
+        # vars <- c(res[cat,"lwr"], res[cat,"est"], res[cat,"upr"])
+        # vars <- pmax(vars, 0) # no negative variances
+        # sigmas <- sqrt(vars)
+        # # print(sigmas)
+        # names(sigmas) <- c('lwr','est','upr')
+        # sigmas_master <- rbind(sigmas_master, sigmas)
         
+        res[res < 0] <- 0 # no negative variances
+        sigmas_master <- sqrt(res)
+        sigmas <- sigmas_master[cat, ]
+        
+        
+        # If not mv, make y as dnorm for each sigma (lwr, est, upr)
+        for (name in names(sigmas)) {
+          
+          s <- sigmas[[name]]
+          
+          if (s > 0) {
+            y <- dnorm(d, mean = 0, sd = s)
+          } else {
+            # point mass at 0 with exponential taper toward the midpoint so it plots nicely
+            # note that these are arbitrary values set so point mass shows up for plots with ymax=~3 - ymax=~8
+            y <- rep(0, length(d))
+            midpt <- ceiling(length(d)/2)
+            max_density <- 30
+            n_taper <- 70
+            weights <- exp(seq(log(0.1), log(1), length.out = n_taper))
+            y[(midpt - n_taper/2 + 1):(midpt + n_taper/2)] <- max_density * weights
+            # weights <- exp(seq(log(0.1), log(1), length.out = n_taper))
+            # y[(midpt - n_taper + 1):midpt] <- max_density * weights
+            # y[(midpt + 1):(midpt + n_taper)] <- max_density * rev(weights)
+          }
+          
+          density_list[[length(density_list)+1]] <- data.frame(
+            d = d,
+            density = y,
+            category = cat,
+            sigma_type = name,
+            overarching_category = cat
+          )
+          
+        }
       }
     }
-  }
-  
-  # if (!do_mv) {
+    
+    # if (!do_mv) {
     # sigmas_master <- as.data.frame(sigmas_master)
     # rownames(sigmas_master) <- cats
     # TODO: can probably just use res, instead of recreating and renaming sigmas_master
-  # }
-  
-  
-  density_df <- do.call(rbind, density_list)
-
-  y_max <- max(density_df$density)
-  
-  # Overlapping densities colored by overarching category, legend inset
-  p_density <- ggplot(density_df, aes(x = d, y = density, color = overarching_category, linetype = sigma_type)) +
-    geom_line(size = 1) +
-    scale_color_manual(values = cat_colors) +
-    labs(title = "Density Plot by Overarching Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
-    theme_classic() +
-    coord_cartesian(xlim = xlim, ylim = c(0, y_max)) +
-    theme(
-      axis.text.x = element_text(angle = xtick_angle, vjust = vjust, hjust = hjust, size = axis_text_size),
-      legend.position = c(0.02, 0.98),
-      legend.justification = c("left", "top"),
-      legend.background = element_rect(fill = "white", color = "grey80"),
-      legend.key.size = unit(0.7, "lines")
-    )
-  if (save_plots) {
-    ggsave(paste0(fn_basedir, 'density',mv_suffix,'.pdf'), p_density, width = width, height = height)
-  } else {
-    print(p_density)
-  }
-  
-  # Panel densities
-  
-  if (do_horizontal_panels) {
-    nrow <- 1
-    panel_width <- width * length(cats) #4 * length(cats)
-    panel_height <- height #3.5 #3.8
-  } else {
-    nrow <- length(cats)
-    panel_width <- width
-    panel_height <- height * length(cats) #3.8 * length(cats)
-  }
-  density_df$fill <- density_df$sigma_type=="est"
-  
-  # Get unique categories and create individual plots
-  unique_cats <- unique(density_df$category)
-  plot_list <- list()
-  
-  for (i in seq_along(unique_cats)) {
-    cat <- unique_cats[i]
-    p <- ggplot(density_df %>% filter(category == cat), aes(x = d, y = density, color = overarching_category, linetype = sigma_type)) +
-      geom_ribbon(data = subset(density_df, category == cat & sigma_type == "est"),
-                  aes(ymin = 0, ymax = density, fill = overarching_category), 
-                  alpha = 0.8, colour = NA, show.legend = FALSE) +
-      annotate("rect", xmin = xlim_annotate[1], xmax = xlim_annotate[2], ymin = 0, ymax = Inf, 
-               fill = "gold", colour=NA, alpha = 0.6) + # using annotate to avoid drawing multiple->too high opacity
-      geom_line(linewidth = 0.8, lineend = "butt") +
-      scale_color_manual(values = cat_colors) +
-      # use named linetypes so dash patterns remain visible at thicker linewidth
-      scale_linetype_manual(values = c(est = "solid", lwr = "dashed", upr = "dotdash")) +
-      scale_fill_manual(values = cat_colors, guide = "none") +
-      scale_y_continuous(limits = c(0, max(density_df %>% filter(category == cat, sigma_type == "est") %>% pull(density), na.rm = TRUE))) +
-      scale_x_continuous(breaks = xbreaks) +
-      # labs(title = cat) +
-      labs(title = cat, x = "Cohen's d", y = "Density") +
-      theme_classic() +
-      theme(legend.position = "none",
-            axis.text.x = element_text(angle = xtick_angle, vjust = vjust, hjust = hjust, size = axis_text_size),
-            axis.text.y = element_text(size = axis_text_size),
-            # axis.title.x = element_text(size = axis_title_size),
-            # axis.title.y = element_text(size = axis_title_size)
-            axis.title.x = element_blank(),
-            axis.title.y = element_blank()
-            )
+    # }
     
-    plot_list[[cat]] <- p
-  }
-  
-  # Combine plots with patchwork
-  p_density_panel <- Reduce(`+`, plot_list) +
-    plot_layout(nrow = nrow, guides = 'collect') &
-    theme(legend.position = c(0.02, 0.98), 
-          legend.justification = c("left", "top"),
-          legend.background = element_rect(fill = "white", color = "grey80"))
-  
-  # p_density_panel <- ggplot(density_df, aes(x = d, y = density, color = overarching_category, fill = overarching_category, linetype = sigma_type)) +
-  #   geom_ribbon(aes(ymin = 0, ymax = density,
-  #                   alpha = ifelse(sigma_type == "est", 0.35, 0)),
-  #               colour = NA, inherit.aes = TRUE, show.legend = FALSE) +
-  #   geom_line(size = 1) +
-  #   facet_wrap(~category, nrow = nrow, scales = "free_y") +
-  #   scale_color_manual(values = cat_colors) + # remap line colors
-  #   scale_fill_manual(values = cat_colors) + # remap fill colors
-  #   labs(title = "Density Curves by Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
-  #   theme_bw() +
-  #   coord_cartesian(xlim = xlim) +
-  #   theme(
-  #     legend.position = c(0.02, 0.98),
-  #     legend.justification = c("left", "top"),
-  #     legend.background = element_rect(fill = "white", color = "grey80"),
-  #     legend.key.size = unit(0.7, "lines")
-  #   )
-  if (save_plots) {
-    ggsave(paste0(fn_basedir, 'density__panels',mv_suffix,'.pdf'), p_density_panel, width = panel_width, height = panel_height)
-  } else {
-    print(p_density_panel)
-  }
-  
-  # Save sigmas_master to file
-  if (save_plots) {
-    if (do_mv) {
-      write.csv(res_mv, file=paste0(fn_basedir, 'param_mus',mv_suffix,'.csv'), row.names=TRUE)
+    
+    density_df <- do.call(rbind, density_list)
+    
+    y_max <- max(density_df$density)
+    
+    # Overlapping densities colored by overarching category, legend inset
+    p_density <- ggplot(density_df, aes(x = d, y = density, color = overarching_category, linetype = sigma_type)) +
+      geom_line(size = 1) +
+      scale_color_manual(values = cat_colors) +
+      labs(title = "Density Plot by Overarching Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
+      theme_classic() +
+      coord_cartesian(xlim = xlim, ylim = c(0, y_max)) +
+      theme(
+        axis.text.x = element_text(angle = xtick_angle, vjust = vjust, hjust = hjust, size = axis_text_size),
+        legend.position = c(0.02, 0.98),
+        legend.justification = c("left", "top"),
+        legend.background = element_rect(fill = "white", color = "grey80"),
+        legend.key.size = unit(0.7, "lines")
+      )
+    if (save_plots) {
+      ggsave(paste0(fn_basedir, 'density',mv_suffix,'.pdf'), p_density, width = width, height = height)
     } else {
-      write.csv(sigmas_master, file=paste0(fn_basedir, 'param_sigmas',mv_suffix,'.csv'), row.names=TRUE)
+      print(p_density)
     }
-  }
-  
+    
+    # Panel densities
+    
+    if (do_horizontal_panels) {
+      nrow <- 1
+      panel_width <- width * length(cats) #4 * length(cats)
+      panel_height <- height #3.5 #3.8
+    } else {
+      nrow <- length(cats)
+      panel_width <- width
+      panel_height <- height * length(cats) #3.8 * length(cats)
+    }
+    density_df$fill <- density_df$sigma_type=="est"
+    
+    # Get unique categories and create individual plots
+    unique_cats <- unique(density_df$category)
+    plot_list <- list()
+    
+    for (i in seq_along(unique_cats)) {
+      cat <- unique_cats[i]
+      p <- ggplot(density_df %>% filter(category == cat), aes(x = d, y = density, color = overarching_category, linetype = sigma_type)) +
+        geom_ribbon(data = subset(density_df, category == cat & sigma_type == "est"),
+                    aes(ymin = 0, ymax = density, fill = overarching_category), 
+                    alpha = 0.8, colour = NA, show.legend = FALSE) +
+        annotate("rect", xmin = xlim_annotate[1], xmax = xlim_annotate[2], ymin = 0, ymax = Inf, 
+                 fill = "gold", colour=NA, alpha = 0.6) + # using annotate to avoid drawing multiple->too high opacity
+        geom_line(linewidth = 0.8, lineend = "butt") +
+        scale_color_manual(values = cat_colors) +
+        # use named linetypes so dash patterns remain visible at thicker linewidth
+        scale_linetype_manual(values = c(est = "solid", lwr = "dashed", upr = "dotdash")) +
+        scale_fill_manual(values = cat_colors, guide = "none") +
+        scale_y_continuous(limits = c(0, max(density_df %>% filter(category == cat, sigma_type == "est") %>% pull(density), na.rm = TRUE))) +
+        scale_x_continuous(breaks = xbreaks) +
+        # labs(title = cat) +
+        labs(title = cat, x = "Cohen's d", y = "Density") +
+        theme_classic() +
+        theme(legend.position = "none",
+              axis.text.x = element_text(angle = xtick_angle, vjust = vjust, hjust = hjust, size = axis_text_size),
+              axis.text.y = element_text(size = axis_text_size),
+              # axis.title.x = element_text(size = axis_title_size),
+              # axis.title.y = element_text(size = axis_title_size)
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank()
+        )
+      
+      plot_list[[cat]] <- p
+    }
+    
+    # Combine plots with patchwork
+    p_density_panel <- Reduce(`+`, plot_list) +
+      plot_layout(nrow = nrow, guides = 'collect') &
+      theme(legend.position = c(0.02, 0.98), 
+            legend.justification = c("left", "top"),
+            legend.background = element_rect(fill = "white", color = "grey80"))
+    
+    # p_density_panel <- ggplot(density_df, aes(x = d, y = density, color = overarching_category, fill = overarching_category, linetype = sigma_type)) +
+    #   geom_ribbon(aes(ymin = 0, ymax = density,
+    #                   alpha = ifelse(sigma_type == "est", 0.35, 0)),
+    #               colour = NA, inherit.aes = TRUE, show.legend = FALSE) +
+    #   geom_line(size = 1) +
+    #   facet_wrap(~category, nrow = nrow, scales = "free_y") +
+    #   scale_color_manual(values = cat_colors) + # remap line colors
+    #   scale_fill_manual(values = cat_colors) + # remap fill colors
+    #   labs(title = "Density Curves by Category", x = "Cohen's d", y = "Density", color = "Category", linetype = "Sigma Type") +
+    #   theme_bw() +
+    #   coord_cartesian(xlim = xlim) +
+    #   theme(
+    #     legend.position = c(0.02, 0.98),
+    #     legend.justification = c("left", "top"),
+    #     legend.background = element_rect(fill = "white", color = "grey80"),
+    #     legend.key.size = unit(0.7, "lines")
+    #   )
+    if (save_plots) {
+      ggsave(paste0(fn_basedir, 'density__panels',mv_suffix,'.pdf'), p_density_panel, width = panel_width, height = panel_height)
+    } else {
+      print(p_density_panel)
+    }
+    
+    # Save sigmas_master to file
+    if (save_plots) {
+      if (do_mv) {
+        write.csv(res_mv, file=paste0(fn_basedir, 'param_mus',mv_suffix,'.csv'), row.names=TRUE)
+      } else {
+        write.csv(sigmas_master, file=paste0(fn_basedir, 'param_sigmas',mv_suffix,'.csv'), row.names=TRUE)
+      }
+    }
+    
   }
   
   return(sigmas_master)
@@ -1163,7 +1301,7 @@ get_average_power <- function(sigmas_master, res_mv = NULL, do_mv = FALSE) {
       
       sigmas <- sigmas_master[cat, ]
       this_sigma <- as.numeric(sigmas["est"])
-
+      
       # get average power at each n
       
       # comparisons based on studies available in meta-analysis 02102026
@@ -1203,7 +1341,7 @@ get_average_power <- function(sigmas_master, res_mv = NULL, do_mv = FALSE) {
     proportion_detectable <- rbind(proportion_detectable, proportion_detectable_tmp)
     
   }
-
+  
   # Preserve facet order to match cats vector
   avg_power$overarching_category <- factor(avg_power$overarching_category, levels = cats)
   proportion_detectable$overarching_category <- factor(proportion_detectable$overarching_category, levels = cats)
@@ -1251,7 +1389,7 @@ plot_average_power <- function(df, do_mv = FALSE, cat_colors, fn_basedir, save_p
       strip.background = element_blank(),
       legend.position = "none"
     )
-
+  
   if (!is.na(x100_idx)) {
     p <- p + geom_vline(xintercept = x100_idx, linetype = "dotted", color = "grey60", linewidth = 0.8)
   }
@@ -1307,7 +1445,7 @@ plot_proportion_detectable <- function(df, do_mv = FALSE, cat_colors, fn_basedir
       strip.background = element_blank(),
       legend.position = "none"
     )
-
+  
   if (!is.na(x100_idx)) {
     p <- p + geom_vline(xintercept = x100_idx, linetype = "dotted", color = "grey60", linewidth = 0.8)
   }
@@ -1361,12 +1499,12 @@ plot_proportion_difference <- function(sigmas_master, phi2, cat_colors, fn_based
     # proportion_detectable_tmp$bonferroni <- sapply(n_vector, function(n) proportion_detectable(alpha/k, 1-target_power, 0, this_sigma*sqrt(n/n_groups^2),n_groups,n_sides))
     # proportion_detectable_tmp$fdr <- sapply(n_vector, function(n) BH_proportion_detectable(0, alpha, 1-target_power, 0, this_sigma*sqrt(n/n_groups^2),n_groups,n_sides))
     
-      
-      
-      # Scenario 2: if you plan for the strongest effect size (take top 10%)
-      # prop_detect_est_strong <- proportion_detectable(alpha = 0.05, power = 0.8, mu = 0, sigma = sigma_uncorrected*sqrt(n/n_groups), n_groups = n_groups, n_sides = 2)
-      # prop_detect_actual_strong <- proportion_detectable(alpha = 0.05, power = 0.8, mu = 0, sigma = sigma_actual*sqrt(n/n_groups), n_groups = n_groups, n_sides = 2)
-      
+    
+    
+    # Scenario 2: if you plan for the strongest effect size (take top 10%)
+    # prop_detect_est_strong <- proportion_detectable(alpha = 0.05, power = 0.8, mu = 0, sigma = sigma_uncorrected*sqrt(n/n_groups), n_groups = n_groups, n_sides = 2)
+    # prop_detect_actual_strong <- proportion_detectable(alpha = 0.05, power = 0.8, mu = 0, sigma = sigma_actual*sqrt(n/n_groups), n_groups = n_groups, n_sides = 2)
+    
     diff_detections_tmp <- diff_detections_tmp %>%
       pivot_longer(
         cols = c(uncorrected),

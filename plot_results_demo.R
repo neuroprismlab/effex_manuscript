@@ -1,7 +1,7 @@
 # Demo for generating Effect Size Project results manuscript figures
 
 # set paths
-source('/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/scripts/smn_pathsetter.R')
+#source('/Users/steph/Library/CloudStorage/GoogleDrive-s.noble@northeastern.edu/My Drive/Lab/Tasks-Ongoing/-K99/Effect_Size/scripts/smn_pathsetter.R')
 if (!exists('project_dir')) { # temp trigger to use pre-set paths
   print('Assuming script is in working directory and creating results in working directory.')
   script_path <- 'plot_results.R'
