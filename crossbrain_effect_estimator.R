@@ -748,22 +748,41 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
     lwr_row <- "95% lower"
     upr_row <- "95% upper"
     
+    # bmr() appears to run column names through something like make.names()
+    # internally (e.g. "task activation" -> "task.activation") somewhere
+    # between X_bayes and fit_all$summary -- so a category whose label
+    # contains a space (or other character make.names() would touch) won't
+    # match colnames(post_summary) by exact string even though it was a
+    # real column in X_bayes. This helper matches exactly first, then falls
+    # back to a make.names()-normalized match, so category lookups below
+    # are robust to whichever convention is in play. Confirm once with:
+    #   colnames(fit_all$summary); colnames(X_bayes)  # (or X_cat)
+    resolve_col <- function(name, choices) {
+      if (name %in% choices) return(name)
+      hit <- choices[make.names(choices) == make.names(name)]
+      if (length(hit) == 1) return(hit)
+      return(NA_character_)
+    }
+    
     if (plot_type == "mv") {
       
       for (cat in unique_cats) {
-        cat_col <- as.character(cat)
+        cat_col <- resolve_col(as.character(cat), colnames(post_summary))
         
         # NOTE: unique_cats is derived from the full df, but X_bayes (and
         # hence post_summary's columns) only includes categories that had
         # at least one non-missing row for THIS estimate/plot_type -- a
         # category can legitimately be absent here even though it exists
-        # elsewhere in the data. Leave res[[cat]]/predicted_y[[cat]] as NULL
-        # (their vector("list",...) default) rather than filling with NA --
-        # do.call(rbind, res) silently drops NULL entries, so downstream
-        # functions that loop over rownames(res) never see this category
-        # at all, instead of tripping over NAs several functions deep.
-        if (!cat_col %in% colnames(post_summary)) {
-          warning(paste0("Category '", cat_col, "' has no usable data for this fit (plot_type = '",
+        # elsewhere in the data (this is now checked via resolve_col()
+        # above, not a raw %in%, since bmr() may rename columns containing
+        # spaces internally -- see the resolve_col() definition above).
+        # Leave res[[cat]]/predicted_y[[cat]] as NULL (their vector("list",
+        # ...) default) rather than filling with NA -- do.call(rbind, res)
+        # silently drops NULL entries, so downstream functions that loop
+        # over rownames(res) never see this category at all, instead of
+        # tripping over NAs several functions deep.
+        if (is.na(cat_col)) {
+          warning(paste0("Category '", as.character(cat), "' has no usable data for this fit (plot_type = '",
                          plot_type, "') -- excluding from results."))
           next
         }
@@ -808,16 +827,28 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
       # it returns a draw per X column (+ tau) under these same names.
       
       for (cat in unique_cats) {
-        cat_col <- as.character(cat)
+        cat_col <- resolve_col(as.character(cat), colnames(post_summary))
         
         # NOTE: see the corresponding guard in the mv branch above -- a
         # category present in the full df can legitimately be absent from
-        # this fit if it had no non-missing rows for this estimate. Leave
-        # res[[cat]]/predicted_y[[cat]] as NULL so do.call(rbind, res) drops
-        # it and downstream functions never see this category at all.
-        if (!cat_col %in% colnames(post_summary)) {
-          warning(paste0("Category '", cat_col, "' has no usable data for this fit (plot_type = '",
+        # this fit if it had no non-missing rows for this estimate (checked
+        # via resolve_col(), not a raw %in%, for the same reason as above).
+        # Leave res[[cat]]/predicted_y[[cat]] as NULL so do.call(rbind, res)
+        # drops it and downstream functions never see this category at all.
+        if (is.na(cat_col)) {
+          warning(paste0("Category '", as.character(cat), "' has no usable data for this fit (plot_type = '",
                          plot_type, "') -- excluding from results."))
+          next
+        }
+        
+        # draws may use the same (possibly renamed) column names as
+        # post_summary -- resolve against draws' own colnames rather than
+        # assuming they match post_summary's exactly.
+        draws_col <- resolve_col(as.character(cat), colnames(draws))
+        if (is.na(draws_col)) {
+          warning(paste0("Category '", as.character(cat), "' found in post_summary but not in ",
+                         "rposterior() draws -- excluding from results. Check colnames(draws) ",
+                         "against colnames(fit_all$summary)."))
           next
         }
         
@@ -835,7 +866,7 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
           row.names = paste0(cat, "_intercept")
         )
         
-        pred_draws <- outer(draws[, cat_col], rep(1, length(ndivk__seq))) +
+        pred_draws <- outer(draws[, draws_col], rep(1, length(ndivk__seq))) +
           outer(draws[, "invn"], 1 / ndivk__seq)
         predicted_y[[cat]] <- cbind(
           fit = colMeans(pred_draws),
