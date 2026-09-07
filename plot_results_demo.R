@@ -16,6 +16,7 @@ source(script_path)
 estimate <- 'd' # only works for d currently, need to fix calculate_effex/effect_size/scripts/checker.R to work for r_sq
 pooling_methods <- c('none', 'net')
 motion_methods <- c('none','regression','threshold') # motion method for other tests
+use_bayesian_fit <- TRUE  # set TRUE to use bmr (bayesmeta) instead of rma.mv (metafor), noting that bmr has no equivalent of the category/dataset_nested nesting
 save_plots <- TRUE # whether to save the plots
 get_data_from_OSF <- FALSE
 osf_file_id <- 'g84tk'
@@ -33,7 +34,7 @@ for (pooling_method in pooling_methods) {
     print(paste0('Doing pooling method: ', pooling_method, ', motion: ', motion_method))
     combo_name <- paste0('pooling.', pooling_method, '.motion.',motion_method,'.mv.none') # note: automatically does mv.none->mv.multi in the background
     output_basedir <- paste0(output_dir, combo_name,'/')  # user-defined path to save the plots
-    estimate_xb_effects(estimate, output_basedir, v, combo_name, save_plots)
+    estimate_xb_effects(estimate, output_basedir, v, combo_name, use_bayesian_fit, save_plots)
   }
 }
 

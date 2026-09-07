@@ -22,7 +22,7 @@
 
 # ------------- MAIN -------------------------
 
-estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, save_plots = TRUE) {
+estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, use_bayesian_fit = FALSE, save_plots = TRUE) {
   
   ## Setup
   
@@ -45,7 +45,6 @@ estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, 
   cat_colors[c(1,2)] <- cat_colors[c(2,1)]
   names(cat_colors) <- cats
   n_pts <- 10000
-  use_bayesian_fit <- TRUE
   
   # Centralize plotting and export sizes/appearance in one place.
   plot_params <- list(
@@ -200,7 +199,7 @@ estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, 
   # if (file.exists(res_fn)) { # first try to load file if exists
   #   load(res_fn)
   # } else { ## df, df_meta, n_pts, main_title, fn, plot_type = "crossvariable", plot_params = NULL
-  all_res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Cross-Brain Effects", res_fn_basename, plot_params = plot_params)
+  all_res <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Cross-Brain Effects", res_fn_basename, use_bayesian_fit = use_bayesian_fit, plot_params = plot_params)
   #res is only est lwr upr
   res <- all_res[c("est", "lwr", "upr")]
   phi2 <- all_res[c("phi2_est", "phi2_lwr", "phi2_upr")]
@@ -211,7 +210,7 @@ estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, 
   # if (file.exists(res_fn_mv)) {
   #   res_mv <- get(load(res_fn_mv))
   # } else {
-  res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Multivariate Effects", res_fn_mv_basename, plot_type = "mv", plot_params = plot_params)
+  res_mv <- estimate_params(summary_data, summary_data__meta,  n_pts, "Parameter Estimation Plot: Multivariate Effects", res_fn_mv_basename, plot_type = "mv", use_bayesian_fit = use_bayesian_fit, plot_params = plot_params)
   # }
   
   # Make density plots
@@ -253,8 +252,8 @@ estimate_xb_effects <- function(estimate = 'd', fn_basedir, v_data, combo_name, 
   
   if (plot_extra) {
     # conservative and large n
-    res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'), plot_params = plot_params)
-    res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'), plot_params = plot_params)
+    res_cons <- estimate_params(summary_data_cons, summary_data_cons__meta,  n_pts, "Conservative Estimates", paste0(fn_basedir,'extra/cons'), use_bayesian_fit = use_bayesian_fit, plot_params = plot_params)
+    res_large <- estimate_params(summary_data[summary_data$n > n_large_threshold,], summary_data__meta[summary_data__meta$n > n_large_threshold,], n_pts, "Point Estimates (n > 900)", paste0(fn_basedir,'extra/point_n900'), use_bayesian_fit = use_bayesian_fit, plot_params = plot_params)
   }
   
   
@@ -588,7 +587,7 @@ get_study_summaries <- function(data, study, estimate, combo_name) {
 
 # Function for plotting effect sizes (mean, sd, n) for each study - point est and conservative  
 
-estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "crossvariable", plot_params = NULL) {
+estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "crossvariable", use_bayesian_fit = FALSE, plot_params = NULL) {
   
   print(paste0('Fitting lines for ', main_title))
   
@@ -636,31 +635,11 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
   # setup grouping variables (used by the frequentist rma.mv nesting)
   df$dataset_nested <- interaction(df$overarching_category, df$dataset, drop = TRUE)
   
-  use_bayesian_fit <- TRUE  # set TRUE to use bayesmeta::bmr() instead of metafor::rma.mv()
-  # NOTE: bmr() has no equivalent of the category/dataset_nested
-  # nesting -- it pools all heterogeneity into a single tau.
-  # Category is instead entered as a FIXED effect (one-hot
-  # columns in X) below, and each category's coefficient is
-  # read directly off the posterior summary (no ranef()/BLUPs,
-  # since bmr() objects have no nested random-effects structure
-  # for that method to operate on). Decided against partial
-  # pooling across category for the Bayesian estimates given
-  # ample sample size; the rma.mv() path below is kept as an
-  # alternative/sensitivity estimation procedure that does use
-  # partial pooling.
-  
-  # ------------------------------------------------------------------
-  # Fit the model ONCE.
-  # IMPORTANT: this block (and the extraction block below it) used to sit
-  # inside the `for (add_meta in c(TRUE, FALSE))` plotting loop further down,
-  # which meant bmr()/rma.mv() -- and the slow rposterior() draws -- were
-  # silently run TWICE per call, since add_meta only controls plot cosmetics
-  # (point transparency, whether meta-analysis points get overlaid), not the
-  # fitted model. Moving the fit out here halves the runtime on its own.
-  # ------------------------------------------------------------------
-  
   if (plot_type == "mv") {
     if (use_bayesian_fit) {
+      # NOTE: bmr() has no equivalent of the category/dataset_nested nesting (pools heterogeneity into a single tau).
+      # Category is entered as a fixed effect (one-hot columns in X), and each coefficients is obtained from posterior summary.
+      
       keep <- !is.na(df$mv) & !is.na(df$vi_mv)
       df_keep <- droplevels(df[keep, ])
       X_bayes <- model.matrix(~ 0 + overarching_category, data = df_keep)
@@ -748,15 +727,9 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
     lwr_row <- "95% lower"
     upr_row <- "95% upper"
     
-    # bmr() appears to run column names through something like make.names()
-    # internally (e.g. "task activation" -> "task.activation") somewhere
-    # between X_bayes and fit_all$summary -- so a category whose label
-    # contains a space (or other character make.names() would touch) won't
-    # match colnames(post_summary) by exact string even though it was a
-    # real column in X_bayes. This helper matches exactly first, then falls
-    # back to a make.names()-normalized match, so category lookups below
-    # are robust to whichever convention is in play. Confirm once with:
-    #   colnames(fit_all$summary); colnames(X_bayes)  # (or X_cat)
+    # bmr() renames names with spaces internally (somewhere between X_bayes and fit_all$summary)
+    # so below we matches exactly first, then fall back to a make.names()-normalized match to be 
+    # robust to convention is in play (can confirm with colnames(fit_all$summary); colnames(X_bayes), or X_cat)
     resolve_col <- function(name, choices) {
       if (name %in% choices) return(name)
       hit <- choices[make.names(choices) == make.names(name)]
@@ -769,18 +742,8 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
       for (cat in unique_cats) {
         cat_col <- resolve_col(as.character(cat), colnames(post_summary))
         
-        # NOTE: unique_cats is derived from the full df, but X_bayes (and
-        # hence post_summary's columns) only includes categories that had
-        # at least one non-missing row for THIS estimate/plot_type -- a
-        # category can legitimately be absent here even though it exists
-        # elsewhere in the data (this is now checked via resolve_col()
-        # above, not a raw %in%, since bmr() may rename columns containing
-        # spaces internally -- see the resolve_col() definition above).
-        # Leave res[[cat]]/predicted_y[[cat]] as NULL (their vector("list",
-        # ...) default) rather than filling with NA -- do.call(rbind, res)
-        # silently drops NULL entries, so downstream functions that loop
-        # over rownames(res) never see this category at all, instead of
-        # tripping over NAs several functions deep.
+        # Leave res[[cat]]/predicted_y[[cat]] as NULL rather than NA to silently drop those nulls during do.call(rbind, res) rather than tripping over NAs later
+        # more detail: unique_cats is derived from full df, but X_bayes (and thus post_summary's columns) only includes categories that had at least one non-missing row for this estimate/plot_type.
         if (is.na(cat_col)) {
           warning(paste0("Category '", as.character(cat), "' has no usable data for this fit (plot_type = '",
                          plot_type, "') -- excluding from results."))
@@ -812,12 +775,8 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
       slope_lwr <- post_summary[lwr_row, "invn"]
       slope_upr <- post_summary[upr_row, "invn"]
       
-      # NOTE: rposterior() is documented as slow -- it samples via numerical
-      # inversion, and by default (tau.sample=TRUE) also draws tau for every
-      # sample, requiring root-finding per draw. Time a small n_draws first
-      # (e.g. 50) before scaling up. If you don't need tau draws themselves,
-      # tau.sample=FALSE is much faster but changes exactly what uncertainty
-      # gets captured -- check bmr()'s help before relying on it as final.
+      # BEWARE: rposterior() is slow -- samples via numerical inversion, and by default (tau.sample=TRUE) also draws tau,
+      # requiring root-finding per draw. TODO: consider setting tau.sample=FALSE
       n_draws <- 500
       print(paste0("  Drawing ", n_draws, " posterior samples via rposterior()..."))
       t0 <- Sys.time()
@@ -829,21 +788,15 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
       for (cat in unique_cats) {
         cat_col <- resolve_col(as.character(cat), colnames(post_summary))
         
-        # NOTE: see the corresponding guard in the mv branch above -- a
-        # category present in the full df can legitimately be absent from
-        # this fit if it had no non-missing rows for this estimate (checked
-        # via resolve_col(), not a raw %in%, for the same reason as above).
-        # Leave res[[cat]]/predicted_y[[cat]] as NULL so do.call(rbind, res)
-        # drops it and downstream functions never see this category at all.
+        # as above, set to NULL rather than NA to catch early
         if (is.na(cat_col)) {
           warning(paste0("Category '", as.character(cat), "' has no usable data for this fit (plot_type = '",
                          plot_type, "') -- excluding from results."))
           next
         }
         
-        # draws may use the same (possibly renamed) column names as
-        # post_summary -- resolve against draws' own colnames rather than
-        # assuming they match post_summary's exactly.
+        # draws may use the same (possibly renamed) col names as post_summary, so
+        # resolve against draws' own colnames rather than assuming match
         draws_col <- resolve_col(as.character(cat), colnames(draws))
         if (is.na(draws_col)) {
           warning(paste0("Category '", as.character(cat), "' found in post_summary but not in ",
@@ -944,9 +897,7 @@ estimate_params <- function(df, df_meta, n_pts, main_title, fn, plot_type = "cro
   res <- do.call(rbind, res)
   
   # ------------------------------------------------------------------
-  # Now just plot. The add_meta loop only affects plot cosmetics (point
-  # alpha, whether meta-analysis points/labels get overlaid, output
-  # filename) -- it no longer touches the model fit above.
+  # Plot, optionally adding meta points/labels
   # ------------------------------------------------------------------
   
   df$x_plot <- df$n/df$k
